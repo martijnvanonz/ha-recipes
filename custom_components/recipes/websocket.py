@@ -48,6 +48,8 @@ async def ws_list(hass, connection, msg) -> None:
             "default_shopping_list": data.shopping_list,
             "planned": data.store.planned_info(),
             "panel_title": data.store.panel_title,
+            "users": await _user_names(hass),
+            "user_id": connection.user.id,
             "default_panel_title": default_title(hass),
         },
     )
@@ -86,6 +88,7 @@ async def ws_set_list(hass, connection, msg) -> None:
         vol.Optional("steps"): [str],
         vol.Optional("photo"): vol.Any(str, None),
         vol.Optional("cooked_count"): vol.All(int, vol.Range(min=0)),
+        vol.Optional("time_minutes"): vol.Any(None, vol.All(int, vol.Range(min=0, max=1440))),
         vol.Optional("last_cooked"): vol.Any(None, str),
     }
 )
@@ -93,7 +96,11 @@ async def ws_set_list(hass, connection, msg) -> None:
 @_handle_errors
 async def ws_save(hass, connection, msg) -> None:
     store = _data(hass).store
-    data = {k: msg[k] for k in ("title", "servings", "ingredients", "steps", "cooked_count", "last_cooked") if k in msg}
+    data = {
+        k: msg[k]
+        for k in ("title", "servings", "ingredients", "steps", "cooked_count", "last_cooked", "time_minutes")
+        if k in msg
+    }
     if "recipe_id" in msg:
         data["id"] = msg["recipe_id"]
     current = store.recipes.get(msg.get("recipe_id", ""))
@@ -185,7 +192,22 @@ async def ws_set_panel_title(hass, connection, msg) -> None:
     connection.send_result(msg["id"], {"panel_title": store.panel_title or default_title(hass)})
 
 
+async def _user_names(hass: HomeAssistant) -> dict[str, str]:
+    """Names of real (non-system) users, to show who marked a favorite."""
+    return {u.id: u.name or "?" for u in await hass.auth.async_get_users() if not u.system_generated}
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "recipes/favorite", vol.Required("recipe_id"): str, vol.Required("favorite"): bool}
+)
+@websocket_api.async_response
+@_handle_errors
+async def ws_favorite(hass, connection, msg) -> None:
+    recipe = await _data(hass).store.async_set_favorite(msg["recipe_id"], connection.user.id, msg["favorite"])
+    connection.send_result(msg["id"], {"recipe": recipe.as_dict()})
+
+
 @callback
 def async_register_websocket(hass: HomeAssistant) -> None:
-    for command in (ws_list, ws_save, ws_delete, ws_scale, ws_add, ws_set_list, ws_plan, ws_set_panel_title):
+    for command in (ws_list, ws_save, ws_delete, ws_scale, ws_add, ws_set_list, ws_plan, ws_set_panel_title, ws_favorite):
         websocket_api.async_register_command(hass, command)

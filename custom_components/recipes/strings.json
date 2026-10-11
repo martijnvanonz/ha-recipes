@@ -68,6 +68,14 @@
         "last_cooked": {
           "name": "Last made",
           "description": "Date you last made this recipe."
+        },
+        "time_minutes": {
+          "name": "Cooking time",
+          "description": "Total time in minutes (0 removes it)."
+        },
+        "favorite": {
+          "name": "Favorite",
+          "description": "Mark or unmark the recipe as a favorite of the user who calls this action."
         }
       }
     },

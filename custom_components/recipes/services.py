@@ -47,6 +47,8 @@ SAVE_SCHEMA = vol.Schema(
         vol.Exclusive("photo_base64", "photo"): cv.string,
         vol.Optional("remove_photo"): cv.boolean,
         vol.Optional("cooked_count"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        vol.Optional("time_minutes"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=0, max=1440))),
+        vol.Optional("favorite"): cv.boolean,
         vol.Optional("last_cooked"): vol.Any(None, cv.date),
     }
 )
@@ -126,7 +128,13 @@ def async_register_services(hass: HomeAssistant) -> None:
             data = dict(call.data)
             if data.get("last_cooked"):
                 data["last_cooked"] = data["last_cooked"].isoformat()
-            recipe = await _data(hass).store.async_save_recipe(data, photo)
+            favorite = data.pop("favorite", None)
+            store = _data(hass).store
+            recipe = await store.async_save_recipe(data, photo)
+            if favorite is not None:
+                if not call.context.user_id:
+                    raise RecipeError("favorite needs a logged-in user (call it with a user's token)")
+                recipe = await store.async_set_favorite(recipe.id, call.context.user_id, favorite)
         except RecipeError as err:
             raise ServiceValidationError(str(err)) from err
         return {"recipe": recipe.as_dict()}

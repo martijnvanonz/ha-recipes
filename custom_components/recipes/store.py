@@ -52,6 +52,8 @@ class Recipe:
     updated: str = ""
     cooked_count: int = 0
     last_cooked: str | None = None  # local date, YYYY-MM-DD
+    time_minutes: int | None = None  # total cooking time
+    favorites: list[str] = field(default_factory=list)  # HA user ids
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -217,6 +219,15 @@ class RecipeStore:
         if not recipe.last_cooked or day >= recipe.last_cooked:
             recipe.last_cooked = day
 
+    async def async_set_favorite(self, recipe_id: str, user_id: str, favorite: bool) -> Recipe:
+        recipe = self.find(recipe_id)
+        if favorite and user_id not in recipe.favorites:
+            recipe.favorites.append(user_id)
+        elif not favorite and user_id in recipe.favorites:
+            recipe.favorites.remove(user_id)
+        await self._async_save()
+        return recipe
+
     async def async_set_panel_title(self, title: str | None) -> None:
         title = (title or "").strip() or None
         if title and len(title) > 40:
@@ -278,6 +289,15 @@ class RecipeStore:
             recipe.ingredients = ingredients(data["ingredients"])
         if "steps" in data:
             recipe.steps = lines(data["steps"])
+        if "time_minutes" in data:
+            minutes = data["time_minutes"]
+            if minutes in (None, "", 0):
+                recipe.time_minutes = None
+            else:
+                minutes = int(minutes)
+                if not 1 <= minutes <= 24 * 60:
+                    raise RecipeError("Cooking time must be 1 to 1440 minutes")
+                recipe.time_minutes = minutes
         if "cooked_count" in data and data["cooked_count"] is not None:
             count = int(data["cooked_count"])
             if count < 0:

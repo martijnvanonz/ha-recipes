@@ -375,3 +375,33 @@ async def test_cooked_counter(hass: HomeAssistant, setup, hass_ws_client) -> Non
 
     with pytest.raises(vol.Invalid):  # rejected by the service schema
         await call(hass, "save", {"id": recipe["id"], "last_cooked": "not a date"})
+
+
+async def test_time_and_favorites(hass: HomeAssistant, setup, hass_ws_client, hass_admin_user, hass_read_only_user) -> None:
+    from homeassistant.core import Context
+
+    recipe = (await call(hass, "save", {**TACOS, "time_minutes": 25}))["recipe"]
+    assert recipe["time_minutes"] == 25 and recipe["favorites"] == []
+    assert (await call(hass, "save", {"id": recipe["id"], "time_minutes": 0}))["recipe"]["time_minutes"] is None
+
+    # Service favorite counts for the calling user.
+    await hass.services.async_call(DOMAIN, "save", {"id": recipe["id"], "favorite": True}, blocking=True,
+                                   context=Context(user_id=hass_read_only_user.id))
+    with pytest.raises(ServiceValidationError):  # no user in context
+        await call(hass, "save", {"id": recipe["id"], "favorite": True})
+
+    ws = await hass_ws_client(hass)  # admin user
+    await ws.send_json({"id": 1, "type": "recipes/favorite", "recipe_id": recipe["id"], "favorite": True})
+    favs = (await ws.receive_json())["result"]["recipe"]["favorites"]
+    assert set(favs) == {hass_admin_user.id, hass_read_only_user.id}
+
+    await ws.send_json({"id": 2, "type": "recipes/list"})
+    res = (await ws.receive_json())["result"]
+    assert res["user_id"] == hass_admin_user.id
+    assert res["users"][hass_read_only_user.id]  # names to show who likes what
+
+    await ws.send_json({"id": 3, "type": "recipes/favorite", "recipe_id": recipe["id"], "favorite": False})
+    assert (await ws.receive_json())["result"]["recipe"]["favorites"] == [hass_read_only_user.id]
+
+    await ws.send_json({"id": 4, "type": "recipes/save", "recipe_id": recipe["id"], "time_minutes": 40})
+    assert (await ws.receive_json())["result"]["recipe"]["time_minutes"] == 40

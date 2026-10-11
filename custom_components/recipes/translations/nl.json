@@ -68,6 +68,14 @@
         "last_cooked": {
           "name": "Laatst gemaakt",
           "description": "Datum waarop je dit recept het laatst hebt gemaakt."
+        },
+        "time_minutes": {
+          "name": "Bereidingstijd",
+          "description": "Totale tijd in minuten (0 haalt het weg)."
+        },
+        "favorite": {
+          "name": "Favoriet",
+          "description": "Maak het recept wel of geen favoriet van de gebruiker die deze actie uitvoert."
         }
       }
     },

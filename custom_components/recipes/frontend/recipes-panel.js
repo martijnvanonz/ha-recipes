@@ -72,6 +72,14 @@ const STRINGS = {
     cookedCount: "Times made",
     lastCookedLabel: "Last made",
     doneToast: (n) => `Enjoy your meal! (made ${n}×)`,
+    minutes: (n) => `${n} min`,
+    timeLabel: "Cooking time (minutes)",
+    filterMine: "My favorites",
+    filterFav: "All favorites",
+    filterQuick: "Quick",
+    favoriteOf: (names) => `Favorite of ${names}`,
+    and: "and",
+    favorite: "Favorite",
   },
   nl: {
     title: "Recepten",
@@ -143,6 +151,14 @@ const STRINGS = {
     cookedCount: "Keer gemaakt",
     lastCookedLabel: "Laatst gemaakt",
     doneToast: (n) => `Eet smakelijk! (${n}× gemaakt)`,
+    minutes: (n) => `${n} min`,
+    timeLabel: "Bereidingstijd (minuten)",
+    filterMine: "Mijn favorieten",
+    filterFav: "Alle favorieten",
+    filterQuick: "Snel",
+    favoriteOf: (names) => `Favoriet van ${names}`,
+    and: "en",
+    favorite: "Favoriet",
   },
 };
 
@@ -226,6 +242,8 @@ class RecipesPanel extends HTMLElement {
       this._lists = { current: res.shopping_list, own: res.own_shopping_list, def: res.default_shopping_list };
       this._planned = res.planned;
       this._panelTitle = { value: res.panel_title, def: res.default_panel_title };
+      this._users = res.users || {};
+      this._userId = res.user_id;
       if (this._current) this._current = this._recipes.find((r) => r.id === this._current.id) || null;
       if (!this._current && this._view === "detail") this._view = "list";
     } catch (err) {
@@ -259,7 +277,7 @@ class RecipesPanel extends HTMLElement {
         this._render();
         break;
       case "new":
-        this._draft = { title: "", servings: 2, ingredients: [emptyRow()], steps: [""], photo: null, photo_url: null };
+        this._draft = { title: "", servings: 2, time_minutes: "", ingredients: [emptyRow()], steps: [""], photo: null, photo_url: null };
         this._current = null;
         this._view = "edit";
         this._render();
@@ -275,6 +293,7 @@ class RecipesPanel extends HTMLElement {
           photo: r.photo,
           photo_url: r.photo_url,
           cooked_count: r.cooked_count || 0,
+          time_minutes: r.time_minutes || "",
           last_cooked: r.last_cooked || "",
         };
         this._view = "edit";
@@ -313,6 +332,17 @@ class RecipesPanel extends HTMLElement {
       case "plan":
         this._plan(this._current.id, this._current.servings);
         break;
+      case "filter": {
+        const f = el.dataset.filter;
+        localStorage.setItem("recipes-filter", this._filter === f ? "" : f);
+        this._render();
+        break;
+      }
+      case "fav": {
+        const r = this._recipes.find((x) => x.id === el.dataset.id);
+        if (r) this._toggleFav(r);
+        break;
+      }
       case "sort":
         localStorage.setItem("recipes-sort", el.dataset.sort);
         this._render();
@@ -491,6 +521,7 @@ class RecipesPanel extends HTMLElement {
         .map((r) => ({ amount: prettyAmount(r.amount), unit: (r.unit || "").trim(), name: (r.name || "").trim() }))
         .filter((r) => r.name || r.amount || r.unit),
       steps: d.steps.map((s) => s.trim()).filter(Boolean),
+      time_minutes: parseInt(d.time_minutes, 10) > 0 ? Math.min(1440, parseInt(d.time_minutes, 10)) : null,
       ...(d.id ? { cooked_count: Math.max(0, parseInt(d.cooked_count, 10) || 0), last_cooked: d.last_cooked || null } : {}),
       photo: d.photo || null,
     };
@@ -658,10 +689,40 @@ class RecipesPanel extends HTMLElement {
     let list = !q ? [...this._recipes] : this._recipes.filter(
       (r) => r.title.toLowerCase().includes(q) || r.ingredients_text.some((i) => i.toLowerCase().includes(q))
     );
+    const filter = this._filter;
+    if (filter === "mine") list = list.filter((r) => this._isMine(r));
+    if (filter === "fav") list = list.filter((r) => (r.favorites || []).length);
+    if (filter === "quick") list = list.filter((r) => r.time_minutes && r.time_minutes <= 30);
     const sort = this._sort;
     if (sort === "most") list.sort((a, b) => (b.cooked_count || 0) - (a.cooked_count || 0) || a.title.localeCompare(b.title));
     if (sort === "oldest") list.sort((a, b) => (a.last_cooked || "").localeCompare(b.last_cooked || "") || a.title.localeCompare(b.title));
     return list;
+  }
+
+  get _filter() {
+    return localStorage.getItem("recipes-filter") || "";
+  }
+
+  _isMine(r) {
+    return (r.favorites || []).includes(this._userId);
+  }
+
+  _favNames(r, exceptMe = false) {
+    const ids = (r.favorites || []).filter((id) => !(exceptMe && id === this._userId));
+    const names = ids.map((id) => (this._users || {})[id]).filter(Boolean);
+    if (names.length <= 1) return names.join("");
+    return `${names.slice(0, -1).join(", ")} ${this._t.and} ${names[names.length - 1]}`;
+  }
+
+  async _toggleFav(r) {
+    try {
+      const res = await this._hass.callWS({ type: "recipes/favorite", recipe_id: r.id, favorite: !this._isMine(r) });
+      Object.assign(r, res.recipe);
+      if (this._current?.id === r.id) this._current = r;
+      this._render();
+    } catch (err) {
+      this._toast(err.message || String(err));
+    }
   }
 
   get _sort() {
@@ -690,13 +751,18 @@ class RecipesPanel extends HTMLElement {
     return list
       .map(
         (r) => `
-        <button class="card" data-action="open" data-id="${esc(r.id)}">
-          ${r.photo_url ? `<img src="${esc(r.photo_url)}" alt="" loading="lazy">` : `<div class="placeholder"><ha-icon icon="mdi:silverware-fork-knife"></ha-icon></div>`}
+        <div class="card" role="button" tabindex="0" data-action="open" data-id="${esc(r.id)}">
+          <div class="card-img">
+            ${r.photo_url ? `<img src="${esc(r.photo_url)}" alt="" loading="lazy">` : `<div class="placeholder"><ha-icon icon="mdi:silverware-fork-knife"></ha-icon></div>`}
+            <button class="fav ${this._isMine(r) ? "on" : ""}" data-action="fav" data-id="${esc(r.id)}" aria-label="${t.favorite}">
+              <ha-icon icon="${this._isMine(r) ? "mdi:heart" : "mdi:heart-outline"}"></ha-icon></button>
+          </div>
           <div class="card-text">
             <div class="card-title">${esc(r.title)}</div>
-            <div class="meta">${t.people(r.servings)} · ${this._cookedLine(r)}</div>
+            <div class="meta">${t.people(r.servings)}${r.time_minutes ? ` · ⏱ ${t.minutes(r.time_minutes)}` : ""} · ${this._cookedLine(r)}</div>
+            ${this._favNames(r, true) ? `<div class="meta fav-line">❤ ${esc(this._favNames(r, true))}</div>` : ""}
           </div>
-        </button>`
+        </div>`
       )
       .join("");
   }
@@ -709,6 +775,8 @@ class RecipesPanel extends HTMLElement {
     const sorts = this._recipes.length > 1
       ? `<div class="sorts">${[["az", t.sortAz], ["most", t.sortMost], ["oldest", t.sortOldest]]
           .map(([k, label]) => `<button class="chip ${this._sort === k ? "active" : ""}" data-action="sort" data-sort="${k}">${label}</button>`)
+          .join("")}<span class="chip-sep"></span>${[["mine", "mdi:heart", t.filterMine], ["fav", "mdi:heart-multiple", t.filterFav], ["quick", "mdi:timer-outline", t.filterQuick]]
+          .map(([k, icon, label]) => `<button class="chip ${this._filter === k ? "active" : ""}" data-action="filter" data-filter="${k}"><ha-icon icon="${icon}"></ha-icon>${label}</button>`)
           .join("")}</div>`
       : "";
     return `${this._plannedHtml()}${search}${sorts}<div class="grid" id="grid">${this._cardsHtml()}</div>`;
@@ -777,7 +845,9 @@ class RecipesPanel extends HTMLElement {
         ${r.photo_url ? `<img class="hero" src="${esc(r.photo_url)}" alt="">` : ""}
         <h1>${esc(r.title)}</h1>
         <div class="meta big"><ha-icon icon="mdi:account-group"></ha-icon> ${t.people(r.servings)}
+          ${r.time_minutes ? `<ha-icon icon="mdi:timer-outline" class="sep-icon"></ha-icon> ${t.minutes(r.time_minutes)}` : ""}
           <ha-icon icon="mdi:chef-hat" class="sep-icon"></ha-icon> ${this._cookedLine(r)}</div>
+        ${this._favNames(r) ? `<div class="meta big fav-line"><ha-icon icon="mdi:heart"></ha-icon> ${esc(t.favoriteOf(this._favNames(r)))}</div>` : ""}
         <div class="actions">
           <button class="primary wide" data-action="open-add" ${r.ingredients.length ? "" : "disabled"}>
             <ha-icon icon="mdi:cart-plus"></ha-icon><span>${t.addToList}</span>
@@ -785,6 +855,8 @@ class RecipesPanel extends HTMLElement {
           ${this._planned?.id === r.id
             ? `<button class="outline" data-action="unplan"><ha-icon icon="mdi:check"></ha-icon><span>${t.doneCooking}</span></button>`
             : `<button class="outline" data-action="plan"><ha-icon icon="mdi:chef-hat"></ha-icon><span>${t.cookThis}</span></button>`}
+          <button class="outline round-fav ${this._isMine(r) ? "on" : ""}" data-action="fav" data-id="${esc(r.id)}" aria-label="${t.favorite}">
+            <ha-icon icon="${this._isMine(r) ? "mdi:heart" : "mdi:heart-outline"}"></ha-icon></button>
         </div>
         <div class="columns">
           <section><h2>${t.ingredients}</h2>${ingredients}</section>
@@ -817,8 +889,12 @@ class RecipesPanel extends HTMLElement {
         <input id="photo-input" type="file" accept="image/*" hidden>
         <label for="f-title">${t.name}</label>
         <input id="f-title" data-field="title" value="${esc(d.title)}" autocomplete="off">
-        <label for="f-servings">${t.servings}</label>
-        <input id="f-servings" data-field="servings" type="number" min="1" max="50" inputmode="numeric" value="${esc(d.servings)}">
+        <div class="two-col">
+          <div><label for="f-servings">${t.servings}</label>
+            <input id="f-servings" data-field="servings" type="number" min="1" max="50" inputmode="numeric" value="${esc(d.servings)}"></div>
+          <div><label for="f-time">${t.timeLabel}</label>
+            <input id="f-time" data-field="time_minutes" type="number" min="0" max="1440" inputmode="numeric" value="${esc(d.time_minutes)}"></div>
+        </div>
         ${d.id ? `
         <div class="two-col">
           <div><label for="f-count">${t.cookedCount}</label>
@@ -957,6 +1033,16 @@ const STYLE = `
   .card { background: var(--card-background-color); border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color));
           border-radius: var(--ha-card-border-radius, 12px); padding: 0; overflow: hidden; text-align: left; display: flex; flex-direction: column;
           box-shadow: var(--ha-card-box-shadow, none); }
+  .card { cursor: pointer; }
+  .card-img { position: relative; }
+  .fav { position: absolute; top: 8px; right: 8px; width: 38px; height: 38px; border-radius: 50%; border: none;
+         background: rgba(0,0,0,.35); color: #fff; display: flex; align-items: center; justify-content: center; --mdc-icon-size: 22px; }
+  .fav.on { color: #ff4d6d; background: rgba(255,255,255,.92); }
+  .fav-line { color: #e0445e; }
+  .round-fav { width: 48px; padding: 0; justify-content: center; }
+  .round-fav.on { color: #e0445e; border-color: #e0445e; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; --mdc-icon-size: 16px; }
+  .chip-sep { width: 1px; background: var(--divider-color); margin: 4px 2px; }
   .card img, .placeholder { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
   .placeholder { display: flex; align-items: center; justify-content: center; background: rgba(127,127,127,.12); color: var(--secondary-text-color);
                  --mdc-icon-size: 40px; }

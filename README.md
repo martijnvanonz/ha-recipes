@@ -20,6 +20,7 @@
 - **Add to shopping list**: pick the number of people and all amounts scale with it (`½ tin` → `1 tin`), untick what you already have, and the rest goes to your to-do list. Items that are already on the list are skipped.
 - **On the menu**: the recipe you add to the list (or mark with *Cook this*) becomes the planned recipe. `sensor.recipes_planned_recipe` has its title, photo, scaled ingredients and steps, so you can show the steps on a kitchen dashboard.
 - **How often you made it**: *Done cooking* (or `recipes.clear_plan` with `cooked: true`) counts the recipe as made. Cards show "made 3× · last 12 Oct", and you can sort by most made or longest ago. You can also set the count and date by hand in the editor.
+- **Cooking time and favorites**: optional cooking time on every recipe (filter *Quick* for 30 minutes or less). Everyone marks their own favorites with ❤️ and sees who else likes a recipe; filter on *My favorites* or *All favorites*.
 - **A shopping list per person**: every Home Assistant user can choose their own to-do list (⚙️ in the tab).
 - **Services for automations and AI agents**: `recipes.save`, `recipes.delete`, `recipes.list`, `recipes.add_to_shopping_list`, `recipes.plan`, `recipes.clear_plan` and `recipes.mark_cooked`, also over the REST API. The event `recipes_cooked` fires when a recipe is made.
 - **English and Dutch**. The tab follows the language of each user.
@@ -61,6 +62,8 @@ data:
   steps:
     - Brown the beef in a large pan.
     - Warm the tortillas and fill them.
+  time_minutes: 25                            # optional cooking time
+  favorite: true                              # optional, for the user who calls the action
   photo_url: https://example.com/tacos.jpg   # or photo_base64 (base64 text or data URL)
 response_variable: result                    # result.recipe.id
 

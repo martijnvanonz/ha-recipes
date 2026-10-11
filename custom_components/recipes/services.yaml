@@ -43,6 +43,17 @@ save:
     last_cooked:
       selector:
         date:
+    time_minutes:
+      example: 30
+      selector:
+        number:
+          min: 0
+          max: 1440
+          unit_of_measurement: min
+          mode: box
+    favorite:
+      selector:
+        boolean:
 delete:
   fields:
     id:
