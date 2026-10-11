@@ -119,7 +119,10 @@ const esc = (s) =>
 
 const UNITS = ["g", "kg", "mg", "ml", "cl", "dl", "l", "el", "tl", "stuk", "stuks", "blik", "blikken", "zakje", "zakjes",
   "pak", "pakje", "pakjes", "teen", "tenen", "snufje", "bos", "bosje", "plak", "plakken", "scheutje", "kopje", "kopjes",
-  "pot", "potje", "handje", "handvol", "theelepel", "eetlepel", "gram", "liter", "cup", "cups", "tbsp", "tsp", "oz", "lb", "pinch"];
+  "pot", "potje", "handje", "handvol", "theelepel", "eetlepel", "gram", "liter", "fles", "flesje", "stukje", "stukjes",
+  "cup", "cups", "tbsp", "tsp", "oz", "lb", "pinch", "pinches", "clove", "cloves", "tin", "tins", "can", "cans",
+  "sachet", "sachets", "bunch", "bunches", "slice", "slices", "piece", "pieces", "handful", "jar", "jars",
+  "pack", "packs", "packet", "packets", "bottle", "bottles", "sprig", "sprigs", "stick", "sticks", "dash"];
 const FRAC = { "½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3, "⅛": 0.125 };
 const FRAC_CHARS = Object.keys(FRAC).join("");
 const AMOUNT_RE = new RegExp(
@@ -722,7 +725,7 @@ class RecipesPanel extends HTMLElement {
             (step, i) => `
           <div class="step-row">
             <span class="num">${i + 1}</span>
-            <textarea data-kind="step" data-index="${i}" rows="2" placeholder="${esc(t.stepPlaceholder(i + 1))}"
+            <textarea data-kind="step" data-index="${i}" rows="1" placeholder="${esc(t.stepPlaceholder(i + 1))}"
                       enterkeyhint="next">${esc(step)}</textarea>
             <div class="step-tools">
               <button class="icon small" data-action="step-up" data-index="${i}" aria-label="${t.moveUp}" ${i === 0 ? "disabled" : ""}>
@@ -816,7 +819,8 @@ const STYLE = `
   .search { display: flex; align-items: center; gap: 8px; background: var(--card-background-color); border-radius: 24px;
             padding: 0 16px; height: 44px; margin: 0 auto 16px; max-width: 1200px; border: 1px solid var(--divider-color); }
   .search input { border: none; outline: none; background: none; color: inherit; font: inherit; flex: 1; height: 100%; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; max-width: 1200px; margin: 0 auto; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; max-width: 1200px; margin: 0 auto; }
+  @media (max-width: 600px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
   .card { background: var(--card-background-color); border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color));
           border-radius: var(--ha-card-border-radius, 12px); padding: 0; overflow: hidden; text-align: left; display: flex; flex-direction: column;
           box-shadow: var(--ha-card-box-shadow, none); }
@@ -824,7 +828,8 @@ const STYLE = `
   .placeholder { display: flex; align-items: center; justify-content: center; background: rgba(127,127,127,.12); color: var(--secondary-text-color);
                  --mdc-icon-size: 40px; }
   .card-text { padding: 10px 12px 12px; }
-  .card-title { font-weight: 500; line-height: 1.25; }
+  .card-title { font-weight: 500; line-height: 1.25; font-size: 16px; }
+  @media (max-width: 600px) { .card-title { font-size: 14px; } }
   .meta { color: var(--secondary-text-color); font-size: 13px; margin-top: 4px; }
   .meta.big { font-size: 15px; display: flex; align-items: center; gap: 6px; --mdc-icon-size: 20px; }
   .detail { max-width: 900px; margin: 0 auto; }
@@ -855,11 +860,11 @@ const STYLE = `
   .step-row { display: grid; grid-template-columns: 24px 1fr auto; gap: 6px; align-items: start; margin-bottom: 8px; }
   .step-row .num { font-weight: 500; color: var(--secondary-text-color); padding-top: 11px; text-align: right; }
   .form .step-row textarea { resize: none; overflow: hidden; min-height: 44px; }
-  .step-tools { display: flex; flex-direction: column; }
+  .step-tools { display: flex; flex-direction: row; align-items: center; padding-top: 4px; }
   .icon.small { width: 34px; height: 34px; --mdc-icon-size: 20px; color: var(--secondary-text-color); }
   @media (max-width: 480px) {
     .ing-head, .ing-row { grid-template-columns: 56px 72px 1fr 32px; gap: 4px; }
-    .step-tools { flex-direction: row; grid-column: 2; justify-content: flex-end; margin-top: -4px; }
+    .step-tools { grid-column: 2; justify-content: flex-end; margin-top: -4px; padding-top: 0; }
     .step-row { grid-template-columns: 20px 1fr; }
   }
   .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 10; display: flex; align-items: flex-end; justify-content: center; }

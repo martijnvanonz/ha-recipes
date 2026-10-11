@@ -1,0 +1,35 @@
+name: Release
+
+# Raise "version" in custom_components/recipes/manifest.json and push to main:
+# this creates the tag v<version> and a GitHub release, which HACS picks up.
+on:
+  push:
+    branches: [main]
+    paths:
+      - custom_components/recipes/manifest.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read version
+        id: version
+        run: echo "version=$(jq -r .version custom_components/recipes/manifest.json)" >> "$GITHUB_OUTPUT"
+      - name: Create release if the tag does not exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "v$VERSION already exists, nothing to do"
+            exit 0
+          fi
+          cd custom_components/recipes && zip -qr "$GITHUB_WORKSPACE/recipes.zip" . -x '__pycache__/*' && cd -
+          gh release create "v$VERSION" recipes.zip --title "v$VERSION" --generate-notes --target "$GITHUB_SHA"
