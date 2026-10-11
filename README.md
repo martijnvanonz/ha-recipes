@@ -19,8 +19,9 @@
 - **Add and edit recipes in the app**: photo (upload or take one with your phone), title, number of people, ingredients (amount · unit · name) and steps.
 - **Add to shopping list**: pick the number of people and all amounts scale with it (`½ tin` → `1 tin`), untick what you already have, and the rest goes to your to-do list. Items that are already on the list are skipped.
 - **On the menu**: the recipe you add to the list (or mark with *Cook this*) becomes the planned recipe. `sensor.recipes_planned_recipe` has its title, photo, scaled ingredients and steps, so you can show the steps on a kitchen dashboard.
+- **How often you made it**: *Done cooking* (or `recipes.clear_plan` with `cooked: true`) counts the recipe as made. Cards show "made 3× · last 12 Oct", and you can sort by most made or longest ago. You can also set the count and date by hand in the editor.
 - **A shopping list per person**: every Home Assistant user can choose their own to-do list (⚙️ in the tab).
-- **Services for automations and AI agents**: `recipes.save`, `recipes.delete`, `recipes.list`, `recipes.add_to_shopping_list`, `recipes.plan` and `recipes.clear_plan`, also over the REST API.
+- **Services for automations and AI agents**: `recipes.save`, `recipes.delete`, `recipes.list`, `recipes.add_to_shopping_list`, `recipes.plan`, `recipes.clear_plan` and `recipes.mark_cooked`, also over the REST API. The event `recipes_cooked` fires when a recipe is made.
 - **English and Dutch**. The tab follows the language of each user.
 - **Local and private**: recipes are stored in `.storage/recipes` and photos in `config/recipes_photos/`. Both are part of your Home Assistant backups.
 
@@ -80,6 +81,14 @@ data:
   servings: 4
 
 action: recipes.clear_plan
+data:
+  cooked: true              # optional: also count the planned recipe as made
+
+# Count a recipe as made without planning it
+action: recipes.mark_cooked
+data:
+  title: tacos
+  date: "2026-10-11"        # optional, default today
 
 # Get all recipes
 action: recipes.list
@@ -182,7 +191,7 @@ card:
 
 ![Kitchen dashboard](docs/screenshots/kitchen.jpg)
 
-To clear the menu every night:
+To clear the menu every night, and count the recipe as made if nobody tapped *Done cooking*:
 
 ```yaml
 alias: Clear the planned recipe at night
@@ -191,6 +200,8 @@ triggers:
     at: "03:00:00"
 actions:
   - action: recipes.clear_plan
+    data:
+      cooked: true
 ```
 
 ### Let your AI assistant do it
