@@ -267,3 +267,44 @@ async def test_migrates_text_ingredients(hass: HomeAssistant, hass_storage) -> N
     assert await hass.config_entries.async_setup(entry.entry_id)
     recipe = (await call(hass, "list"))["recipes"][0]
     assert recipe["ingredients"] == [{"amount": "2", "unit": "", "name": "eggs"}, {"amount": "", "unit": "", "name": "salt"}]
+
+
+async def test_planned_recipe(hass: HomeAssistant, setup, hass_ws_client) -> None:
+    sensor = "sensor.recipes_planned_recipe"
+    assert hass.states.get(sensor).state == "unknown"
+
+    recipe = (await call(hass, "save", TACOS))["recipe"]
+    await call(hass, "add_to_shopping_list", {"title": "taco", "servings": 4})
+    await hass.async_block_till_done()
+    state = hass.states.get(sensor)
+    assert state.state == "Taco wraps"
+    assert state.attributes["servings"] == 4
+    assert state.attributes["ingredients"][0] == "600 g minced beef"  # scaled
+    assert state.attributes["steps"] == ["Chop the onion.", "Fry the beef."]
+
+    # Adding without planning keeps the current plan.
+    await call(hass, "save", {"title": "Pancakes", "ingredients": [{"amount": 2, "name": "eggs"}]})
+    await call(hass, "add_to_shopping_list", {"title": "pancakes", "plan": False})
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor).state == "Taco wraps"
+
+    await call(hass, "plan", {"title": "pancakes", "servings": 6}, response=False)
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor).state == "Pancakes"
+
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "recipes/add_to_shopping_list", "items": ["wraps"],
+                        "recipe_id": recipe["id"], "servings": 2})
+    assert (await ws.receive_json())["success"]
+    await ws.send_json({"id": 2, "type": "recipes/list"})
+    assert (await ws.receive_json())["result"]["planned"]["title"] == "Taco wraps"
+
+    await call(hass, "clear_plan", response=False)
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor).state == "unknown"
+
+    # Deleting the planned recipe clears the plan.
+    await call(hass, "plan", {"id": recipe["id"]}, response=False)
+    await call(hass, "delete", {"id": recipe["id"]}, response=False)
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor).state == "unknown"

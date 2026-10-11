@@ -6,6 +6,7 @@ import io
 import logging
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ from .scaling import (
     format_ingredient,
     ingredient_from_text,
     normalize_amount,
+    scale_ingredients,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -109,7 +111,18 @@ class RecipeStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.recipes: dict[str, Recipe] = {}
         self.user_lists: dict[str, str] = {}  # HA user id -> to-do entity
+        self.planned: dict[str, Any] | None = None  # {"recipe_id", "servings", "since"}
         self.photo_dir = Path(hass.config.path(PHOTO_DIR))
+        self._listeners: list[Callable[[], None]] = []
+
+    def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call `listener` after every change; returns a function to stop listening."""
+        self._listeners.append(listener)
+        return lambda: self._listeners.remove(listener)
+
+    def _changed(self) -> None:
+        for listener in list(self._listeners):
+            listener()
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
@@ -122,12 +135,51 @@ class RecipeStore:
             ]
             self.recipes[raw["id"]] = Recipe(**raw)
         self.user_lists = dict(data.get("user_lists", {}))
+        self.planned = data.get("planned")
+        if self.planned and self.planned.get("recipe_id") not in self.recipes:
+            self.planned = None
         await self.hass.async_add_executor_job(lambda: self.photo_dir.mkdir(exist_ok=True))
 
     async def _async_save(self) -> None:
         await self._store.async_save(
-            {"recipes": [asdict(r) for r in self.recipes.values()], "user_lists": self.user_lists}
+            {
+                "recipes": [asdict(r) for r in self.recipes.values()],
+                "user_lists": self.user_lists,
+                "planned": self.planned,
+            }
         )
+        self._changed()
+
+    def planned_info(self) -> dict[str, Any] | None:
+        """The planned recipe with its scaled ingredients, or None."""
+        if not self.planned or self.planned["recipe_id"] not in self.recipes:
+            return None
+        recipe = self.recipes[self.planned["recipe_id"]]
+        servings = self.planned.get("servings") or recipe.servings
+        scaled = scale_ingredients(recipe.ingredients, recipe.servings, servings)
+        return {
+            **recipe.as_dict(),
+            "servings": servings,
+            "recipe_servings": recipe.servings,
+            "ingredients": scaled,
+            "ingredients_text": [format_ingredient(i) for i in scaled],
+            "planned_since": self.planned.get("since"),
+        }
+
+    async def async_plan(self, recipe_id: str | None, servings: int | None = None) -> None:
+        """Mark a recipe as the one we are going to cook (None: clear)."""
+        if recipe_id is None:
+            self.planned = None
+        else:
+            recipe = self.find(recipe_id)
+            if servings is not None and not 1 <= int(servings) <= MAX_SERVINGS:
+                raise RecipeError(f"Servings must be 1 to {MAX_SERVINGS}")
+            self.planned = {
+                "recipe_id": recipe.id,
+                "servings": int(servings) if servings else recipe.servings,
+                "since": dt_util.utcnow().isoformat(),
+            }
+        await self._async_save()
 
     async def async_set_user_list(self, user_id: str, entity_id: str | None) -> None:
         """Set (or with None: clear) the shopping list of one HA user."""
@@ -196,6 +248,8 @@ class RecipeStore:
     async def async_delete(self, recipe_id: str) -> None:
         recipe = self.find(recipe_id)
         del self.recipes[recipe.id]
+        if self.planned and self.planned.get("recipe_id") == recipe.id:
+            self.planned = None
         await self._async_save()
         if recipe.photo:
             await self._async_delete_photo(recipe.photo)

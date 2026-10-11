@@ -18,8 +18,9 @@
 - **A Recipes tab in the sidebar** with a photo card for every recipe and a search box.
 - **Add and edit recipes in the app**: photo (upload or take one with your phone), title, number of people, ingredients (amount · unit · name) and steps.
 - **Add to shopping list**: pick the number of people and all amounts scale with it (`½ tin` → `1 tin`), untick what you already have, and the rest goes to your to-do list. Items that are already on the list are skipped.
+- **On the menu**: the recipe you add to the list (or mark with *Cook this*) becomes the planned recipe. `sensor.recipes_planned_recipe` has its title, photo, scaled ingredients and steps, so you can show the steps on a kitchen dashboard.
 - **A shopping list per person**: every Home Assistant user can choose their own to-do list (⚙️ in the tab).
-- **Services for automations and AI agents**: `recipes.save`, `recipes.delete`, `recipes.list` and `recipes.add_to_shopping_list`, also over the REST API.
+- **Services for automations and AI agents**: `recipes.save`, `recipes.delete`, `recipes.list`, `recipes.add_to_shopping_list`, `recipes.plan` and `recipes.clear_plan`, also over the REST API.
 - **English and Dutch**. The tab follows the language of each user.
 - **Local and private**: recipes are stored in `.storage/recipes` and photos in `config/recipes_photos/`. Both are part of your Home Assistant backups.
 
@@ -69,7 +70,16 @@ data:
   servings: 4               # optional: scale the amounts
   exclude: [garlic]         # optional; or only: [...]
   shopping_list: todo.groceries   # optional; default from the integration settings
+  plan: true                # optional (default true): also make it the planned recipe
 response_variable: added    # {added: [...], skipped: [...], shopping_list: ...}
+
+# Mark a recipe as planned without touching the shopping list, or clear it
+action: recipes.plan
+data:
+  title: tacos
+  servings: 4
+
+action: recipes.clear_plan
 
 # Get all recipes
 action: recipes.list
@@ -89,11 +99,103 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
   "http://homeassistant.local:8123/api/services/recipes/add_to_shopping_list?return_response"
 ```
 
+### The planned recipe sensor
+
+`sensor.recipes_planned_recipe` shows the title of the planned recipe (`unknown` when nothing is planned). Its picture is the recipe photo, and it has these attributes:
+
+| Attribute | Example |
+|---|---|
+| `servings` | `4` |
+| `ingredients` | `["600 g minced beef", "2 red onion", …]` (scaled to `servings`) |
+| `steps` | `["Chop the onion, garlic and pepper.", …]` |
+| `recipe_id`, `planned_since` | |
+
 ### Ingredients
 
 Every ingredient is stored as `{amount, unit, name}`. Only the **amount** is scaled, and it must be a number: `250`, `0,5`, `0.5`, `½`, `1½`, `1/2`, `1 1/2` or a range like `2-3`. Amounts are stored in a standard form (`0,5` → `½`). The unit is free text and is never guessed.
 
 For convenience `ingredients` also accepts plain text lines (`"1 red onion"`). Then only a number at the start becomes the amount and the rest becomes the name.
+
+## Automation ideas
+
+### Get your shopping list when you arrive at a store
+
+Make a [zone](https://www.home-assistant.io/integrations/zone/) for every supermarket you visit and give it the icon `mdi:cart`. This automation sends the open items to your phone when you enter one of those zones. Tapping the notification opens the list.
+
+```yaml
+alias: Shopping list at the store
+triggers:
+  - trigger: state
+    entity_id: person.alex          # your person entity
+conditions:
+  - condition: template
+    value_template: >
+      {{ states.zone | selectattr('name', 'eq', trigger.to_state.state)
+         | selectattr('attributes.icon', 'eq', 'mdi:cart') | list | count > 0 }}
+actions:
+  - action: todo.get_items
+    target:
+      entity_id: todo.shopping_list
+    data:
+      status: needs_action
+    response_variable: list
+  - variables:
+      items: "{{ list['todo.shopping_list']['items'] | map(attribute='summary') | list }}"
+  - condition: template
+    value_template: "{{ items | count > 0 }}"
+  - action: notify.mobile_app_alex_phone   # your phone
+    data:
+      title: "🛒 {{ trigger.to_state.state }}"
+      message: "{{ items | join(', ') }}"
+      data:
+        url: /todo?entity_id=todo.shopping_list            # iOS
+        clickAction: /todo?entity_id=todo.shopping_list    # Android
+```
+
+### Show the steps when you walk into the kitchen
+
+Put this card on the dashboard of a tablet in the kitchen. It appears when someone is in the kitchen and a recipe is planned.
+
+```yaml
+type: conditional
+conditions:
+  - condition: state
+    entity: binary_sensor.kitchen_motion       # any motion or presence sensor
+    state: "on"
+  - condition: state
+    entity: sensor.recipes_planned_recipe
+    state_not: unknown
+card:
+  type: markdown
+  content: >
+    {% set r = 'sensor.recipes_planned_recipe' %}
+    <img src="{{ state_attr(r, 'entity_picture') }}" width="100%">
+
+    ## {{ states(r) }} · {{ state_attr(r, 'servings') }} people
+
+    {% for step in state_attr(r, 'steps') %}
+    {{ loop.index }}. {{ step }}
+    {% endfor %}
+
+    **You need:** {{ state_attr(r, 'ingredients') | join(', ') }}
+```
+
+![Kitchen dashboard](docs/screenshots/kitchen.jpg)
+
+To clear the menu every night:
+
+```yaml
+alias: Clear the planned recipe at night
+triggers:
+  - trigger: time
+    at: "03:00:00"
+actions:
+  - action: recipes.clear_plan
+```
+
+### Let your AI assistant do it
+
+Give your assistant (for example an LLM agent with access to the Home Assistant API) the services above. Then you can say *"Save this recipe"* with a photo and a list of ingredients, or *"Put tacos for four on the shopping list, but not the garlic"*. That is `recipes.add_to_shopping_list` with `title: tacos`, `servings: 4` and `exclude: [garlic]`.
 
 ## Development
 

@@ -55,6 +55,11 @@ const STRINGS = {
     useDefault: (name) => `Default (${name})`,
     listSaved: "Shopping list saved",
     addedTo: (name) => `to ${name}`,
+    cookThis: "Cook this",
+    doneCooking: "Done cooking",
+    planned: "On the menu",
+    plannedToast: (title) => `${title} is on the menu`,
+    clearedToast: "Enjoy your meal!",
   },
   nl: {
     title: "Recepten",
@@ -109,6 +114,11 @@ const STRINGS = {
     useDefault: (name) => `Standaard (${name})`,
     listSaved: "Boodschappenlijst opgeslagen",
     addedTo: (name) => `op ${name}`,
+    cookThis: "Dit gaan we koken",
+    doneCooking: "Klaar met koken",
+    planned: "Op het menu",
+    plannedToast: (title) => `${title} staat op het menu`,
+    clearedToast: "Eet smakelijk!",
   },
 };
 
@@ -190,6 +200,7 @@ class RecipesPanel extends HTMLElement {
       const res = await this._hass.callWS({ type: "recipes/list" });
       this._recipes = res.recipes;
       this._lists = { current: res.shopping_list, own: res.own_shopping_list, def: res.default_shopping_list };
+      this._planned = res.planned;
       if (this._current) this._current = this._recipes.find((r) => r.id === this._current.id) || null;
       if (!this._current && this._view === "detail") this._view = "list";
     } catch (err) {
@@ -268,6 +279,19 @@ class RecipesPanel extends HTMLElement {
         break;
       case "pick-list":
         this._setList(el.dataset.entity || null);
+        break;
+      case "plan":
+        this._plan(this._current.id, this._current.servings);
+        break;
+      case "unplan":
+        this._plan(null);
+        break;
+      case "open-planned":
+        this._current = this._recipes.find((r) => r.id === this._planned?.id) || null;
+        if (this._current) {
+          this._view = "detail";
+          this._render();
+        }
         break;
       case "add-ingredient":
         this._addIngredient(this._draft.ingredients.length);
@@ -448,6 +472,19 @@ class RecipesPanel extends HTMLElement {
     }
   }
 
+  async _plan(recipeId, servings) {
+    try {
+      const msg = { type: "recipes/plan", recipe_id: recipeId };
+      if (recipeId && servings) msg.servings = servings;
+      const res = await this._hass.callWS(msg);
+      this._planned = res.planned;
+      this._toast(res.planned ? this._t.plannedToast(res.planned.title) : this._t.clearedToast);
+      this._render();
+    } catch (err) {
+      this._toast(err.message || String(err));
+    }
+  }
+
   async _setList(entityId) {
     try {
       const res = await this._hass.callWS({ type: "recipes/set_shopping_list", entity_id: entityId });
@@ -499,14 +536,19 @@ class RecipesPanel extends HTMLElement {
     const items = dlg.items.filter((_, i) => dlg.selected[i]);
     if (!items.length) return;
     try {
-      const res = await this._hass.callWS({ type: "recipes/add_to_shopping_list", items });
+      const res = await this._hass.callWS({
+        type: "recipes/add_to_shopping_list",
+        items,
+        recipe_id: this._current.id,
+        servings: dlg.servings,
+      });
       const t = this._t;
       const where = t.addedTo(this._listName(res.shopping_list));
       this._toast(
         (res.added.length ? t.added(res.added.length, res.skipped.length) : t.nothingAdded(res.skipped.length)) + ` ${where}`
       );
       this._dialog = null;
-      this._render();
+      await this._load();
     } catch (err) {
       this._toast(err.message || String(err));
     }
@@ -593,7 +635,22 @@ class RecipesPanel extends HTMLElement {
     const search = this._recipes.length > 4
       ? `<div class="search"><ha-icon icon="mdi:magnify"></ha-icon><input id="search" data-field="search" placeholder="${t.search}" value="${esc(this._search)}"></div>`
       : "";
-    return `${search}<div class="grid" id="grid">${this._cardsHtml()}</div>`;
+    return `${this._plannedHtml()}${search}<div class="grid" id="grid">${this._cardsHtml()}</div>`;
+  }
+
+  _plannedHtml() {
+    const p = this._planned;
+    if (!p) return "";
+    const t = this._t;
+    return `
+      <div class="planned">
+        <button class="planned-main" data-action="open-planned">
+          ${p.photo_url ? `<img src="${esc(p.photo_url)}" alt="">` : `<ha-icon icon="mdi:chef-hat"></ha-icon>`}
+          <div><div class="planned-label">${t.planned}</div>
+          <div class="planned-title">${esc(p.title)} · ${t.people(p.servings)}</div></div>
+        </button>
+        <button class="text" data-action="unplan"><ha-icon icon="mdi:check"></ha-icon><span>${t.doneCooking}</span></button>
+      </div>`;
   }
 
   _renderList() {
@@ -636,9 +693,14 @@ class RecipesPanel extends HTMLElement {
         ${r.photo_url ? `<img class="hero" src="${esc(r.photo_url)}" alt="">` : ""}
         <h1>${esc(r.title)}</h1>
         <div class="meta big"><ha-icon icon="mdi:account-group"></ha-icon> ${t.people(r.servings)}</div>
-        <button class="primary wide" data-action="open-add" ${r.ingredients.length ? "" : "disabled"}>
-          <ha-icon icon="mdi:cart-plus"></ha-icon><span>${t.addToList}</span>
-        </button>
+        <div class="actions">
+          <button class="primary wide" data-action="open-add" ${r.ingredients.length ? "" : "disabled"}>
+            <ha-icon icon="mdi:cart-plus"></ha-icon><span>${t.addToList}</span>
+          </button>
+          ${this._planned?.id === r.id
+            ? `<button class="outline" data-action="unplan"><ha-icon icon="mdi:check"></ha-icon><span>${t.doneCooking}</span></button>`
+            : `<button class="outline" data-action="plan"><ha-icon icon="mdi:chef-hat"></ha-icon><span>${t.cookThis}</span></button>`}
+        </div>
         <div class="columns">
           <section><h2>${t.ingredients}</h2>${ingredients}</section>
           <section>${steps}</section>
@@ -814,6 +876,18 @@ const STYLE = `
   .ingredients { padding-left: 20px; margin: 0; line-height: 1.6; }
   .steps { padding-left: 22px; margin: 0; line-height: 1.55; }
   .steps li { margin-bottom: 10px; }
+  .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+  .actions .primary.wide { margin: 0; }
+  .outline { background: none; border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 24px;
+             height: 48px; padding: 0 22px; display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 15px; }
+  @media (max-width: 759px) { .actions .outline { width: 100%; justify-content: center; } }
+  .planned { display: flex; align-items: center; gap: 8px; max-width: 1200px; margin: 0 auto 16px; padding: 8px 8px 8px 8px;
+             background: var(--card-background-color); border: 1px solid var(--primary-color); border-radius: 16px; }
+  .planned-main { flex: 1; display: flex; align-items: center; gap: 12px; background: none; border: none; text-align: left; padding: 0; min-width: 0; }
+  .planned-main img, .planned-main ha-icon { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; flex: none; }
+  .planned-main ha-icon { display: flex; align-items: center; justify-content: center; color: var(--primary-color); --mdc-icon-size: 32px; }
+  .planned-label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--primary-color); font-weight: 500; }
+  .planned-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .danger-zone { margin-top: 32px; border-top: 1px solid var(--divider-color); padding-top: 8px; }
   .form { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; }
   .form label { font-weight: 500; margin: 14px 0 6px; }

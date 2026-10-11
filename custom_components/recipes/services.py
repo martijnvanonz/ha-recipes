@@ -57,6 +57,14 @@ ADD_SCHEMA = vol.Schema(
         vol.Optional("only"): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("exclude"): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("shopping_list"): cv.entity_domain("todo"),
+        vol.Optional("plan", default=True): cv.boolean,
+    }
+)
+PLAN_SCHEMA = vol.Schema(
+    {
+        vol.Exclusive("id", "recipe"): cv.string,
+        vol.Exclusive("title", "recipe"): cv.string,
+        vol.Optional("servings"): _SERVINGS,
     }
 )
 
@@ -125,10 +133,28 @@ def async_register_services(hass: HomeAssistant) -> None:
             items = select_items(items, call.data.get("only"), call.data.get("exclude"))
             shopping_list = call.data.get("shopping_list", data.shopping_list)
             result = await async_add_to_list(hass, shopping_list, items)
+            if call.data["plan"]:
+                await data.store.async_plan(recipe.id, target)
         except RecipeError as err:
             raise ServiceValidationError(str(err)) from err
         return {"recipe": recipe.title, "servings": target, "shopping_list": shopping_list, **result}
 
+    async def plan(call: ServiceCall) -> None:
+        try:
+            store = _data(hass).store
+            recipe = store.find(call.data.get("id"), call.data.get("title"))
+            await store.async_plan(recipe.id, call.data.get("servings"))
+        except RecipeError as err:
+            raise ServiceValidationError(str(err)) from err
+
+    async def clear_plan(call: ServiceCall) -> None:
+        try:
+            await _data(hass).store.async_plan(None)
+        except RecipeError as err:
+            raise ServiceValidationError(str(err)) from err
+
+    hass.services.async_register(DOMAIN, "plan", plan, PLAN_SCHEMA)
+    hass.services.async_register(DOMAIN, "clear_plan", clear_plan, vol.Schema({}))
     hass.services.async_register(DOMAIN, "save", save, SAVE_SCHEMA, SupportsResponse.OPTIONAL)
     hass.services.async_register(DOMAIN, "delete", delete, DELETE_SCHEMA)
     hass.services.async_register(DOMAIN, "list", list_recipes, vol.Schema({}), SupportsResponse.ONLY)

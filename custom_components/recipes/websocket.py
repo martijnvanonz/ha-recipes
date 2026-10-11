@@ -44,6 +44,7 @@ async def ws_list(hass, connection, msg) -> None:
             "shopping_list": _user_list(hass, connection),
             "own_shopping_list": data.store.user_lists.get(connection.user.id),
             "default_shopping_list": data.shopping_list,
+            "planned": data.store.planned_info(),
         },
     )
 
@@ -122,17 +123,40 @@ async def ws_scale(hass, connection, msg) -> None:
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): "recipes/add_to_shopping_list", vol.Required("items"): [str]}
+    {
+        vol.Required("type"): "recipes/add_to_shopping_list",
+        vol.Required("items"): [str],
+        # When given, this recipe becomes the planned recipe.
+        vol.Optional("recipe_id"): str,
+        vol.Optional("servings"): _SERVINGS,
+    }
 )
 @websocket_api.async_response
 @_handle_errors
 async def ws_add(hass, connection, msg) -> None:
     target = _user_list(hass, connection)
     result = await async_add_to_list(hass, target, msg["items"])
+    if "recipe_id" in msg:
+        await _data(hass).store.async_plan(msg["recipe_id"], msg.get("servings"))
     connection.send_result(msg["id"], {**result, "shopping_list": target})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "recipes/plan",
+        vol.Required("recipe_id"): vol.Any(None, str),
+        vol.Optional("servings"): _SERVINGS,
+    }
+)
+@websocket_api.async_response
+@_handle_errors
+async def ws_plan(hass, connection, msg) -> None:
+    store = _data(hass).store
+    await store.async_plan(msg["recipe_id"], msg.get("servings"))
+    connection.send_result(msg["id"], {"planned": store.planned_info()})
 
 
 @callback
 def async_register_websocket(hass: HomeAssistant) -> None:
-    for command in (ws_list, ws_save, ws_delete, ws_scale, ws_add, ws_set_list):
+    for command in (ws_list, ws_save, ws_delete, ws_scale, ws_add, ws_set_list, ws_plan):
         websocket_api.async_register_command(hass, command)

@@ -104,7 +104,40 @@
         "shopping_list": {
           "name": "Shopping list",
           "description": "To-do list to use. Default: the list chosen in the integration settings."
+        },
+        "plan": {
+          "name": "Plan",
+          "description": "Make this the planned recipe (shown in sensor 'Planned recipe'). Default: on."
         }
+      }
+    },
+    "plan": {
+      "name": "Plan recipe",
+      "description": "Make a recipe the planned recipe, for example to show its steps on a kitchen dashboard.",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "ID of the recipe."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Name of the recipe (a unique part of the name is enough)."
+        },
+        "servings": {
+          "name": "Servings",
+          "description": "Scale the amounts to this number of people."
+        }
+      }
+    },
+    "clear_plan": {
+      "name": "Clear planned recipe",
+      "description": "Clear the planned recipe (for example after dinner)."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "planned_recipe": {
+        "name": "Planned recipe"
       }
     }
   }

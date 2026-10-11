@@ -70,3 +70,24 @@ add_to_shopping_list:
       selector:
         entity:
           domain: todo
+    plan:
+      default: true
+      selector:
+        boolean:
+plan:
+  fields:
+    id:
+      selector:
+        text:
+    title:
+      example: "Taco wraps"
+      selector:
+        text:
+    servings:
+      example: 4
+      selector:
+        number:
+          min: 1
+          max: 50
+          mode: box
+clear_plan:

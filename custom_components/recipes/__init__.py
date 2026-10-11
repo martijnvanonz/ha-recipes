@@ -25,6 +25,7 @@ from .store import RecipeError, RecipeStore
 from .websocket import async_register_websocket
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+PLATFORMS = ["sensor"]
 
 type RecipesConfigEntry = ConfigEntry[RecipesData]
 
@@ -66,13 +67,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: RecipesConfigEntry) -> b
         )
         hass.http.register_view(PhotoUploadView())
     await async_register_panel(hass)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: RecipesConfigEntry) -> bool:
     async_remove_panel(hass)
-    return True
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 async def _async_reload(hass: HomeAssistant, entry: RecipesConfigEntry) -> None:

@@ -104,7 +104,40 @@
         "shopping_list": {
           "name": "Boodschappenlijst",
           "description": "Takenlijst om te gebruiken. Standaard: de lijst uit de instellingen van de integratie."
+        },
+        "plan": {
+          "name": "Plannen",
+          "description": "Maak dit het geplande recept (zichtbaar in sensor 'Gepland recept'). Standaard: aan."
         }
+      }
+    },
+    "plan": {
+      "name": "Recept plannen",
+      "description": "Maak een recept het geplande recept, bijvoorbeeld om de stappen op een keukendashboard te tonen.",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "ID van het recept."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "Naam van het recept (een uniek deel van de naam is genoeg)."
+        },
+        "servings": {
+          "name": "Personen",
+          "description": "Reken de hoeveelheden om naar dit aantal personen."
+        }
+      }
+    },
+    "clear_plan": {
+      "name": "Gepland recept wissen",
+      "description": "Wis het geplande recept (bijvoorbeeld na het eten)."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "planned_recipe": {
+        "name": "Gepland recept"
       }
     }
   }
