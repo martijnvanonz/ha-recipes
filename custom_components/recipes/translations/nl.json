@@ -43,7 +43,7 @@
         },
         "ingredients": {
           "name": "Ingrediënten",
-          "description": "Lijst met ingrediënten: {amount, unit, name}. Amount is een getal (250, 0,5, 1/2, ½, 2-3) en wordt omgerekend; unit is optioneel. Gewone tekstregels werken ook: alleen een getal vooraan wordt de hoeveelheid."
+          "description": "Lijst met ingrediënten, elk met amount (hoeveelheid), unit (eenheid) en name (naam). De hoeveelheid is een getal (250, 0,5, 1/2, ½, 2-3) en wordt omgerekend; de eenheid is optioneel. Gewone tekstregels werken ook: dan wordt alleen een getal vooraan de hoeveelheid."
         },
         "steps": {
           "name": "Bereiding",

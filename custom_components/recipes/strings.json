@@ -43,7 +43,7 @@
         },
         "ingredients": {
           "name": "Ingredients",
-          "description": "List of ingredients: {amount, unit, name}. Amount is a number (250, 0,5, 1/2, ½, 2-3) and is scaled; unit is optional. Plain text lines also work: only a leading number is used as amount."
+          "description": "List of ingredients, each with amount, unit and name. The amount is a number (250, 0,5, 1/2, ½, 2-3) and is scaled; the unit is optional. Plain text lines also work: then only a number at the start becomes the amount."
         },
         "steps": {
           "name": "Steps",
