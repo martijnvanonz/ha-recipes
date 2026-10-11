@@ -670,7 +670,7 @@ class RecipesPanel extends HTMLElement {
           <div><div class="planned-label">${t.planned}</div>
           <div class="planned-title">${esc(p.title)} · ${t.people(p.servings)}</div></div>
         </button>
-        <button class="text" data-action="unplan"><ha-icon icon="mdi:check"></ha-icon><span>${t.doneCooking}</span></button>
+        <button class="text" data-action="unplan" aria-label="${t.doneCooking}" title="${t.doneCooking}"><ha-icon icon="mdi:check"></ha-icon><span>${t.doneCooking}</span></button>
       </div>`;
   }
 
@@ -863,8 +863,7 @@ const STYLE = `
   button:disabled { opacity: .45; cursor: default; }
   .toolbar { display: flex; align-items: center; gap: 4px; height: var(--header-height, 56px); padding: 0 8px 0 12px;
              background: var(--app-header-background-color, var(--primary-color)); color: var(--app-header-text-color, #fff);
-             border-bottom: var(--app-header-border-bottom, none); position: sticky; top: 0; z-index: 2;
-             padding-top: env(safe-area-inset-top); }
+             border-bottom: var(--app-header-border-bottom, none); position: sticky; top: 0; z-index: 2; }
   .toolbar .title { flex: 1; font-size: 20px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 8px; }
   .toolbar .primary.small { background: rgba(255,255,255,.18); color: inherit; }
   .content { height: calc(100% - var(--header-height, 56px)); overflow-y: auto; padding: 16px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
@@ -916,7 +915,14 @@ const STYLE = `
   .planned-main img, .planned-main ha-icon { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; flex: none; }
   .planned-main ha-icon { display: flex; align-items: center; justify-content: center; color: var(--primary-color); --mdc-icon-size: 32px; }
   .planned-label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--primary-color); font-weight: 500; }
+  .planned-main > div { min-width: 0; overflow: hidden; }
   .planned-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .planned .text { flex: none; }
+  @media (max-width: 600px) {
+    .planned .text span { display: none; }
+    .planned .text { width: 44px; height: 44px; border-radius: 50%; justify-content: center; border: 1px solid var(--primary-color); }
+    .planned-main img, .planned-main ha-icon { width: 48px; height: 48px; }
+  }
   .danger-zone { margin-top: 32px; border-top: 1px solid var(--divider-color); padding-top: 8px; }
   .form { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; }
   .form label { font-weight: 500; margin: 14px 0 6px; }
