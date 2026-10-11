@@ -13,14 +13,26 @@ from PIL import Image
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.recipes.const import DOMAIN
-from custom_components.recipes.scaling import scale_ingredients, scale_line
+from custom_components.recipes.scaling import (
+    AmountError,
+    ingredient_from_text,
+    normalize_amount,
+    scale_amount,
+    scale_ingredients,
+)
 
 LIST = "todo.shopping_list"
 
 TACOS = {
     "title": "Taco wraps",
     "servings": 2,
-    "ingredients": "- 300 g minced beef\n- 1 red onion\n- 2 cloves garlic\n- ½ tin sweetcorn\n- wraps",
+    "ingredients": [
+        {"amount": "300", "unit": "g", "name": "minced beef"},
+        {"amount": 1, "name": "red onion"},
+        {"amount": "2", "unit": "cloves", "name": "garlic"},
+        {"amount": "0,5", "unit": "tin", "name": "sweetcorn"},
+        {"name": "wraps"},
+    ],
     "steps": ["Chop the onion.", "Fry the beef."],
 }
 
@@ -64,22 +76,34 @@ def jpeg_bytes(size=(3000, 2000)) -> bytes:
     return buf.getvalue()
 
 
-def test_scaling() -> None:
-    assert scale_line("250 g pasta", 2) == "500 g pasta"
-    assert scale_line("½ tin sweetcorn", 2) == "1 tin sweetcorn"
-    assert scale_line("1 onion", 1.5) == "1½ onion"
-    assert scale_line("0,5 l milk", 3) == "1½ l milk"
-    assert scale_line("2-3 cloves garlic", 2) == "4-6 cloves garlic"
-    assert scale_line("250g beef", 0.5) == "125g beef"
-    assert scale_line("salt and pepper", 2) == "salt and pepper"
-    assert scale_ingredients(["1 egg"], 2, 2) == ["1 egg"]
-    assert scale_ingredients(["1 egg"], None, 4) == ["1 egg"]
+def test_amounts_and_scaling() -> None:
+    assert [normalize_amount(a) for a in ("250", "0,5", "0.5", "1/2", "1 1/2", "1½", "2-3", 2, 0.25, "", None)] == [
+        "250", "½", "½", "½", "1½", "1½", "2-3", "2", "¼", "", ""]
+    for bad in ("a pinch", "red", "1/0", "2x"):
+        with pytest.raises(AmountError):
+            normalize_amount(bad)
+    assert scale_amount("250", 2) == "500"
+    assert scale_amount("½", 2) == "1"
+    assert scale_amount("1", 1.5) == "1½"
+    assert scale_amount("0,4", 3) == "1,2"
+    assert scale_amount("2-3", 2) == "4-6"
+    assert scale_amount("", 2) == ""
+    egg = [{"amount": "1", "unit": "", "name": "egg"}]
+    assert scale_ingredients(egg, 2, 2) == egg
+    assert scale_ingredients(egg, None, 4) == egg
+    # Text lines: only a leading number is split off, nothing else is guessed.
+    assert ingredient_from_text("1 red onion") == {"amount": "1", "unit": "", "name": "red onion"}
+    assert ingredient_from_text("300 g minced beef") == {"amount": "300", "unit": "", "name": "g minced beef"}
+    assert ingredient_from_text("salt and pepper") == {"amount": "", "unit": "", "name": "salt and pepper"}
+    assert ingredient_from_text("7up") == {"amount": "", "unit": "", "name": "7up"}
 
 
 async def test_save_list_update_delete(hass: HomeAssistant, setup) -> None:
     resp = await call(hass, "save", TACOS)
     recipe = resp["recipe"]
-    assert recipe["ingredients"][0] == "300 g minced beef"  # list markers removed
+    assert recipe["ingredients"][0] == {"amount": "300", "unit": "g", "name": "minced beef"}
+    assert recipe["ingredients"][3] == {"amount": "½", "unit": "tin", "name": "sweetcorn"}  # normalized
+    assert recipe["ingredients_text"][1] == "1 red onion"
     assert recipe["steps"] == ["Chop the onion.", "Fry the beef."]
     assert recipe["photo_url"] is None
 
@@ -88,7 +112,11 @@ async def test_save_list_update_delete(hass: HomeAssistant, setup) -> None:
     assert resp["recipe"]["servings"] == 3
     assert resp["recipe"]["ingredients"] == recipe["ingredients"]
 
-    await call(hass, "save", {"title": "Pancakes", "servings": 4, "ingredients": ["1 l milk"]})
+    resp = await call(hass, "save", {"title": "Pancakes", "servings": 4, "ingredients": "- 1 l milk\n- 2 eggs"})
+    assert resp["recipe"]["ingredients"][1] == {"amount": "2", "unit": "", "name": "eggs"}  # text lines work too
+
+    with pytest.raises(ServiceValidationError):
+        await call(hass, "save", {"title": "Bad", "ingredients": [{"amount": "a pinch", "name": "salt"}]})
     listed = (await call(hass, "list"))["recipes"]
     assert [r["title"] for r in listed] == ["Pancakes", "Taco wraps"]
 
@@ -112,7 +140,7 @@ async def test_add_to_shopping_list(hass: HomeAssistant, setup) -> None:
 
     resp = await call(hass, "add_to_shopping_list", {"title": "taco", "servings": 4, "exclude": ["garlic"]})
     assert resp["servings"] == 4
-    assert resp["added"] == ["600 g minced beef", "2 red onion", "1 tin sweetcorn"]
+    assert resp["added"] == ["600 g minced beef", "2 red onion", "1 tin sweetcorn"]  # amounts scaled
     assert resp["skipped"] == ["wraps"]  # already on the list (case-insensitive)
     assert await items_on_list(hass) == ["Wraps", "600 g minced beef", "2 red onion", "1 tin sweetcorn"]
 
@@ -159,14 +187,16 @@ async def test_websocket_and_upload(hass: HomeAssistant, setup, hass_ws_client, 
 
     ws = await hass_ws_client(hass)
     await ws.send_json({"id": 1, "type": "recipes/save", "title": "Pasta", "servings": 2,
-                        "ingredients": ["250 g pasta", "1 onion"], "steps": ["Boil."], "photo": photo})
+                        "ingredients": [{"amount": "250", "unit": "g", "name": "pasta"}, {"amount": "1", "name": "onion"}],
+                        "steps": ["Boil."], "photo": photo})
     msg = await ws.receive_json()
     assert msg["success"], msg
     rid = msg["result"]["recipe"]["id"]
 
     await ws.send_json({"id": 2, "type": "recipes/scale", "recipe_id": rid, "servings": 4})
     msg = await ws.receive_json()
-    assert msg["result"]["ingredients"] == ["500 g pasta", "2 onion"]
+    assert msg["result"]["items"] == ["500 g pasta", "2 onion"]
+    assert msg["result"]["ingredients"][0] == {"amount": "500", "unit": "g", "name": "pasta"}
 
     await ws.send_json({"id": 3, "type": "recipes/list"})
     msg = await ws.receive_json()
@@ -219,3 +249,21 @@ async def test_service_shopping_list_option(hass: HomeAssistant, setup) -> None:
     assert resp["shopping_list"] == LIST and resp["added"] == ["wraps"]
     with pytest.raises(ServiceValidationError):
         await call(hass, "add_to_shopping_list", {"title": "taco", "shopping_list": "todo.missing"})
+
+
+async def test_migrates_text_ingredients(hass: HomeAssistant, hass_storage) -> None:
+    hass_storage["recipes"] = {
+        "version": 1,
+        "key": "recipes",
+        "data": {"recipes": [{"id": "a" * 32, "title": "Old", "servings": 2, "ingredients": ["2 eggs", "salt"],
+                              "steps": [], "photo": None, "created": "", "updated": ""}]},
+    }
+    shopping = MockConfigEntry(domain="shopping_list")
+    shopping.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(shopping.entry_id)
+    assert await async_setup_component(hass, "http", {})
+    entry = MockConfigEntry(domain=DOMAIN, data={"shopping_list": LIST})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    recipe = (await call(hass, "list"))["recipes"][0]
+    assert recipe["ingredients"] == [{"amount": "2", "unit": "", "name": "eggs"}, {"amount": "", "unit": "", "name": "salt"}]

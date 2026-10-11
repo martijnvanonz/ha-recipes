@@ -15,10 +15,9 @@ save:
           max: 50
           mode: box
     ingredients:
-      example: "300 g minced beef\n1 red onion\nwraps"
+      example: '[{"amount": "300", "unit": "g", "name": "minced beef"}, {"amount": "1", "name": "red onion"}]'
       selector:
-        text:
-          multiline: true
+        object:
     steps:
       example: "Chop the onion.\nFry the beef."
       selector:

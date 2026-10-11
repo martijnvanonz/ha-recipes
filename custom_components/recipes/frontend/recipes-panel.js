@@ -115,7 +115,7 @@ const STRINGS = {
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-// ---------- ingredient lines <-> rows (amount | unit | name) ----------
+// ---------- ingredients are {amount, unit, name}; units are only suggestions ----------
 
 const UNITS = ["g", "kg", "mg", "ml", "cl", "dl", "l", "el", "tl", "stuk", "stuks", "blik", "blikken", "zakje", "zakjes",
   "pak", "pakje", "pakjes", "teen", "tenen", "snufje", "bos", "bosje", "plak", "plakken", "scheutje", "kopje", "kopjes",
@@ -124,31 +124,6 @@ const UNITS = ["g", "kg", "mg", "ml", "cl", "dl", "l", "el", "tl", "stuk", "stuk
   "sachet", "sachets", "bunch", "bunches", "slice", "slices", "piece", "pieces", "handful", "jar", "jars",
   "pack", "packs", "packet", "packets", "bottle", "bottles", "sprig", "sprigs", "stick", "sticks", "dash"];
 const FRAC = { "½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3, "⅛": 0.125 };
-const FRAC_CHARS = Object.keys(FRAC).join("");
-const AMOUNT_RE = new RegExp(
-  `^\\s*((?:\\d+\\s*[${FRAC_CHARS}]|[${FRAC_CHARS}]|\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?:\\s*[-–]\\s*(?:\\d+\\s*[${FRAC_CHARS}]|[${FRAC_CHARS}]|\\d+/\\d+|\\d+(?:[.,]\\d+)?))?)\\s*(.*)$`
-);
-
-function parseLine(line) {
-  const m = AMOUNT_RE.exec(line);
-  let amount = "";
-  let rest = line.trim();
-  if (m && (!m[2] || !/^\d/.test(m[2]))) {
-    amount = m[1].replace(/\s+/g, " ").trim();
-    rest = m[2];
-  }
-  let unit = "";
-  const u = /^(\S+)\s+(.*)$/.exec(rest);
-  if (amount && u && UNITS.includes(u[1].toLowerCase())) {
-    unit = u[1];
-    rest = u[2];
-  } else if (amount && UNITS.includes(rest.toLowerCase())) {
-    unit = rest;
-    rest = "";
-  }
-  return { amount: prettyAmount(amount), unit, name: rest.trim() };
-}
-
 function prettyAmount(text) {
   text = String(text || "").trim();
   const one = (part) => {
@@ -167,10 +142,6 @@ function prettyAmount(text) {
     return part;
   };
   return text.split(/\s*[-–]\s*/).map(one).join("-");
-}
-
-function joinRow(row) {
-  return [prettyAmount(row.amount), (row.unit || "").trim(), (row.name || "").trim()].filter(Boolean).join(" ");
 }
 
 const emptyRow = () => ({ amount: "", unit: "", name: "" });
@@ -263,7 +234,7 @@ class RecipesPanel extends HTMLElement {
           id: r.id,
           title: r.title,
           servings: r.servings,
-          ingredients: r.ingredients.length ? r.ingredients.map(parseLine) : [emptyRow()],
+          ingredients: r.ingredients.length ? r.ingredients.map((i) => ({ ...i })) : [emptyRow()],
           steps: r.steps.length ? [...r.steps] : [""],
           photo: r.photo,
           photo_url: r.photo_url,
@@ -458,7 +429,9 @@ class RecipesPanel extends HTMLElement {
       type: "recipes/save",
       title: d.title.trim(),
       servings: Math.max(1, Math.min(50, parseInt(d.servings, 10) || 1)),
-      ingredients: d.ingredients.map(joinRow).filter(Boolean),
+      ingredients: d.ingredients
+        .map((r) => ({ amount: prettyAmount(r.amount), unit: (r.unit || "").trim(), name: (r.name || "").trim() }))
+        .filter((r) => r.name || r.amount || r.unit),
       steps: d.steps.map((s) => s.trim()).filter(Boolean),
       photo: d.photo || null,
     };
@@ -504,7 +477,7 @@ class RecipesPanel extends HTMLElement {
 
   async _openAdd() {
     const r = this._current;
-    this._dialog = { servings: r.servings, items: [...r.ingredients], selected: r.ingredients.map(() => true) };
+    this._dialog = { servings: r.servings, items: [...r.ingredients_text], selected: r.ingredients.map(() => true) };
     this._render();
   }
 
@@ -514,7 +487,7 @@ class RecipesPanel extends HTMLElement {
     dlg.servings = n;
     try {
       const res = await this._hass.callWS({ type: "recipes/scale", recipe_id: this._current.id, servings: n });
-      dlg.items = res.ingredients;
+      dlg.items = res.items;
     } catch (err) {
       this._toast(err.message || String(err));
     }
@@ -591,7 +564,7 @@ class RecipesPanel extends HTMLElement {
     const q = this._search.trim().toLowerCase();
     if (!q) return this._recipes;
     return this._recipes.filter(
-      (r) => r.title.toLowerCase().includes(q) || r.ingredients.some((i) => i.toLowerCase().includes(q))
+      (r) => r.title.toLowerCase().includes(q) || r.ingredients_text.some((i) => i.toLowerCase().includes(q))
     );
   }
 
@@ -653,7 +626,7 @@ class RecipesPanel extends HTMLElement {
     const t = this._t;
     const r = this._current;
     const ingredients = r.ingredients.length
-      ? `<ul class="ingredients">${r.ingredients.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`
+      ? `<ul class="ingredients">${r.ingredients_text.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`
       : `<p class="muted">${t.noIngredients}</p>`;
     const steps = r.steps.length
       ? `<h2>${t.steps}</h2><ol class="steps">${r.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`
@@ -886,4 +859,5 @@ const STYLE = `
   .item input { width: 20px; height: 20px; accent-color: var(--primary-color); flex: none; }
 `;
 
-customElements.define("recipes-panel", RecipesPanel);
+// After an update the browser can load a second copy of this file; keep the first one.
+if (!customElements.get("recipes-panel")) customElements.define("recipes-panel", RecipesPanel);

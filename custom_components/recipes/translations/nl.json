@@ -43,7 +43,7 @@
         },
         "ingredients": {
           "name": "Ingrediënten",
-          "description": "Eén ingrediënt per regel, met de hoeveelheid vooraan (bijvoorbeeld '250 g pasta')."
+          "description": "Lijst met ingrediënten: {amount, unit, name}. Amount is een getal (250, 0,5, 1/2, ½, 2-3) en wordt omgerekend; unit is optioneel. Gewone tekstregels werken ook: alleen een getal vooraan wordt de hoeveelheid."
         },
         "steps": {
           "name": "Bereiding",

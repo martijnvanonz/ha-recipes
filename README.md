@@ -51,11 +51,11 @@ action: recipes.save
 data:
   title: Beef tacos
   servings: 2
-  ingredients: |
-    300 g minced beef
-    1 red onion
-    ½ tin sweetcorn
-    6 tortillas
+  ingredients:               # amount is a number and gets scaled; unit is optional
+    - {amount: 300, unit: g, name: minced beef}
+    - {amount: 1, name: red onion}
+    - {amount: ½, unit: tin, name: sweetcorn}
+    - {name: salt and pepper}   # no amount
   steps:
     - Brown the beef in a large pan.
     - Warm the tortillas and fill them.
@@ -89,9 +89,11 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
   "http://homeassistant.local:8123/api/services/recipes/add_to_shopping_list?return_response"
 ```
 
-### Amounts
+### Ingredients
 
-The amount at the start of an ingredient line is scaled. These forms work: `250`, `0,5`, `0.5`, `½`, `1½`, `1/2`, `1 1/2` and ranges like `2-3`. Lines without an amount (for example "salt and pepper") stay the same.
+Every ingredient is stored as `{amount, unit, name}`. Only the **amount** is scaled, and it must be a number: `250`, `0,5`, `0.5`, `½`, `1½`, `1/2`, `1 1/2` or a range like `2-3`. Amounts are stored in a standard form (`0,5` → `½`). The unit is free text and is never guessed.
+
+For convenience `ingredients` also accepts plain text lines (`"1 red onion"`). Then only a number at the start becomes the amount and the rest becomes the name.
 
 ## Development
 

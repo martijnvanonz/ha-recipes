@@ -18,11 +18,22 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN, MAX_SERVINGS, PHOTO_MAX_BYTES
-from .scaling import scale_ingredients
+from .scaling import format_ingredient, scale_ingredients
 from .shopping import async_add_to_list, select_items
 from .store import RecipeError
 
 _LINES = vol.Any(cv.string, [cv.string])
+_INGREDIENT = vol.Any(
+    cv.string,
+    vol.Schema(
+        {
+            vol.Optional("amount"): vol.Any(None, cv.string, vol.Coerce(float)),
+            vol.Optional("unit"): vol.Any(None, cv.string),
+            vol.Required("name"): cv.string,
+        }
+    ),
+)
+_INGREDIENTS = vol.Any(cv.string, [_INGREDIENT])
 _SERVINGS = vol.All(vol.Coerce(int), vol.Range(min=1, max=MAX_SERVINGS))
 
 SAVE_SCHEMA = vol.Schema(
@@ -30,7 +41,7 @@ SAVE_SCHEMA = vol.Schema(
         vol.Optional("id"): cv.string,
         vol.Optional("title"): cv.string,
         vol.Optional("servings"): _SERVINGS,
-        vol.Optional("ingredients"): _LINES,
+        vol.Optional("ingredients"): _INGREDIENTS,
         vol.Optional("steps"): _LINES,
         vol.Exclusive("photo_url", "photo"): cv.url,
         vol.Exclusive("photo_base64", "photo"): cv.string,
@@ -109,7 +120,8 @@ def async_register_services(hass: HomeAssistant) -> None:
             data = _data(hass)
             recipe = data.store.find(call.data.get("id"), call.data.get("title"))
             target = call.data.get("servings", recipe.servings)
-            items = scale_ingredients(recipe.ingredients, recipe.servings, target)
+            scaled = scale_ingredients(recipe.ingredients, recipe.servings, target)
+            items = [format_ingredient(i) for i in scaled]
             items = select_items(items, call.data.get("only"), call.data.get("exclude"))
             shopping_list = call.data.get("shopping_list", data.shopping_list)
             result = await async_add_to_list(hass, shopping_list, items)

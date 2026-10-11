@@ -9,7 +9,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
 from .const import MAX_SERVINGS
-from .scaling import scale_ingredients
+from .scaling import format_ingredient, scale_ingredients
 from .shopping import async_add_to_list
 from .store import RecipeError
 
@@ -75,7 +75,9 @@ async def ws_set_list(hass, connection, msg) -> None:
         vol.Optional("recipe_id"): str,
         vol.Optional("title"): str,
         vol.Optional("servings"): _SERVINGS,
-        vol.Optional("ingredients"): [str],
+        vol.Optional("ingredients"): [
+            vol.Schema({vol.Optional("amount"): str, vol.Optional("unit"): str, vol.Required("name"): str})
+        ],
         vol.Optional("steps"): [str],
         vol.Optional("photo"): vol.Any(str, None),
     }
@@ -115,9 +117,8 @@ async def ws_delete(hass, connection, msg) -> None:
 @_handle_errors
 async def ws_scale(hass, connection, msg) -> None:
     recipe = _data(hass).store.find(msg["recipe_id"])
-    connection.send_result(
-        msg["id"], {"ingredients": scale_ingredients(recipe.ingredients, recipe.servings, msg["servings"])}
-    )
+    scaled = scale_ingredients(recipe.ingredients, recipe.servings, msg["servings"])
+    connection.send_result(msg["id"], {"ingredients": scaled, "items": [format_ingredient(i) for i in scaled]})
 
 
 @websocket_api.websocket_command(

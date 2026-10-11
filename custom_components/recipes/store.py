@@ -23,6 +23,12 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
+from .scaling import (
+    AmountError,
+    format_ingredient,
+    ingredient_from_text,
+    normalize_amount,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _PHOTO_NAME = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp|gif)$")
@@ -37,7 +43,7 @@ class Recipe:
     id: str
     title: str
     servings: int
-    ingredients: list[str] = field(default_factory=list)
+    ingredients: list[dict[str, str]] = field(default_factory=list)  # {amount, unit, name}
     steps: list[str] = field(default_factory=list)
     photo: str | None = None
     created: str = ""
@@ -46,6 +52,7 @@ class Recipe:
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["photo_url"] = f"{PHOTO_URL}/{self.photo}" if self.photo else None
+        data["ingredients_text"] = [format_ingredient(i) for i in self.ingredients]
         return data
 
 
@@ -62,6 +69,38 @@ def lines(value: Any) -> list[str]:
     return out
 
 
+def ingredients(value: Any) -> list[dict[str, str]]:
+    """Accept ingredient objects {amount, unit, name}, text lines, or a multi-line string.
+
+    Objects are stored as given (the amount must be a number). Text lines only get
+    a leading number split off; the unit is never guessed.
+    """
+    if value is None:
+        return []
+    items = value.splitlines() if isinstance(value, str) else list(value)
+    out: list[dict[str, str]] = []
+    for item in items:
+        if isinstance(item, dict):
+            name = str(item.get("name") or "").strip()
+            unit = str(item.get("unit") or "").strip()
+            raw_amount = item.get("amount")
+            if not name and not unit and raw_amount in (None, ""):
+                continue
+            if not name:
+                raise RecipeError("Every ingredient needs a name")
+            try:
+                amount = normalize_amount(raw_amount)
+            except AmountError as err:
+                raise RecipeError(
+                    f"'{raw_amount}' is not an amount for {name}; use a number like 2, 0,5, 1/2 or ½"
+                ) from err
+            out.append({"amount": amount, "unit": unit, "name": name})
+        else:
+            for line in lines([str(item)]):
+                out.append(ingredient_from_text(line))
+    return out
+
+
 class RecipeStore:
     """Keeps all recipes in memory and saves them to .storage."""
 
@@ -74,7 +113,14 @@ class RecipeStore:
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
-        self.recipes = {r["id"]: Recipe(**r) for r in data.get("recipes", [])}
+        self.recipes = {}
+        for raw in data.get("recipes", []):
+            raw = dict(raw)
+            # Version 0.2 stored ingredients as plain text lines.
+            raw["ingredients"] = [
+                ingredient_from_text(i) if isinstance(i, str) else i for i in raw.get("ingredients", [])
+            ]
+            self.recipes[raw["id"]] = Recipe(**raw)
         self.user_lists = dict(data.get("user_lists", {}))
         await self.hass.async_add_executor_job(lambda: self.photo_dir.mkdir(exist_ok=True))
 
@@ -134,7 +180,7 @@ class RecipeStore:
                 raise RecipeError(f"Servings must be 1 to {MAX_SERVINGS}")
             recipe.servings = servings
         if "ingredients" in data:
-            recipe.ingredients = lines(data["ingredients"])
+            recipe.ingredients = ingredients(data["ingredients"])
         if "steps" in data:
             recipe.steps = lines(data["steps"])
         old_photo = recipe.photo
