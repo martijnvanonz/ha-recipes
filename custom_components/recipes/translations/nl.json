@@ -60,6 +60,14 @@
         "remove_photo": {
           "name": "Foto verwijderen",
           "description": "Verwijder de huidige foto."
+        },
+        "cooked_count": {
+          "name": "Keer gemaakt",
+          "description": "Stel in hoe vaak je dit recept hebt gemaakt."
+        },
+        "last_cooked": {
+          "name": "Laatst gemaakt",
+          "description": "Datum waarop je dit recept het laatst hebt gemaakt."
         }
       }
     },
@@ -131,7 +139,31 @@
     },
     "clear_plan": {
       "name": "Gepland recept wissen",
-      "description": "Wis het geplande recept (bijvoorbeeld na het eten)."
+      "description": "Wis het geplande recept (bijvoorbeeld na het eten).",
+      "fields": {
+        "cooked": {
+          "name": "Gekookt",
+          "description": "Tel het geplande recept als gemaakt (+1 en vandaag als laatst gemaakt)."
+        }
+      }
+    },
+    "mark_cooked": {
+      "name": "Markeer als gemaakt",
+      "description": "Tel een recept als gemaakt: +1 en de datum als laatst gemaakt.",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "ID van het recept."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "Naam van het recept (een uniek deel van de naam is genoeg)."
+        },
+        "date": {
+          "name": "Datum",
+          "description": "Dag waarop je het maakte. Standaard: vandaag."
+        }
+      }
     }
   },
   "entity": {

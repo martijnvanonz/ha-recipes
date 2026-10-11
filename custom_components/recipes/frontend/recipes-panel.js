@@ -63,6 +63,15 @@ const STRINGS = {
     sidebarName: "Name in the sidebar",
     sidebarHelp: (def) => `The same for everyone (only admins can change it). Leave empty for the default: ${def}.`,
     sidebarSaved: "Name saved",
+    cooked: (n) => `made ${n}×`,
+    neverCooked: "never made",
+    lastCooked: (d) => `last ${d}`,
+    sortAz: "A–Z",
+    sortMost: "Most made",
+    sortOldest: "Longest ago",
+    cookedCount: "Times made",
+    lastCookedLabel: "Last made",
+    doneToast: (n) => `Enjoy your meal! (made ${n}×)`,
   },
   nl: {
     title: "Recepten",
@@ -125,6 +134,15 @@ const STRINGS = {
     sidebarName: "Naam in het zijmenu",
     sidebarHelp: (def) => `Voor iedereen hetzelfde (alleen beheerders kunnen het wijzigen). Leeg laten voor de standaard: ${def}.`,
     sidebarSaved: "Naam opgeslagen",
+    cooked: (n) => `${n}× gemaakt`,
+    neverCooked: "nog nooit gemaakt",
+    lastCooked: (d) => `laatst ${d}`,
+    sortAz: "A–Z",
+    sortMost: "Vaakst",
+    sortOldest: "Langst geleden",
+    cookedCount: "Keer gemaakt",
+    lastCookedLabel: "Laatst gemaakt",
+    doneToast: (n) => `Eet smakelijk! (${n}× gemaakt)`,
   },
 };
 
@@ -256,6 +274,8 @@ class RecipesPanel extends HTMLElement {
           steps: r.steps.length ? [...r.steps] : [""],
           photo: r.photo,
           photo_url: r.photo_url,
+          cooked_count: r.cooked_count || 0,
+          last_cooked: r.last_cooked || "",
         };
         this._view = "edit";
         this._render();
@@ -293,8 +313,12 @@ class RecipesPanel extends HTMLElement {
       case "plan":
         this._plan(this._current.id, this._current.servings);
         break;
+      case "sort":
+        localStorage.setItem("recipes-sort", el.dataset.sort);
+        this._render();
+        break;
       case "unplan":
-        this._plan(null);
+        this._plan(null, null, true);
         break;
       case "open-planned":
         this._current = this._recipes.find((r) => r.id === this._planned?.id) || null;
@@ -467,6 +491,7 @@ class RecipesPanel extends HTMLElement {
         .map((r) => ({ amount: prettyAmount(r.amount), unit: (r.unit || "").trim(), name: (r.name || "").trim() }))
         .filter((r) => r.name || r.amount || r.unit),
       steps: d.steps.map((s) => s.trim()).filter(Boolean),
+      ...(d.id ? { cooked_count: Math.max(0, parseInt(d.cooked_count, 10) || 0), last_cooked: d.last_cooked || null } : {}),
       photo: d.photo || null,
     };
     if (d.id) msg.recipe_id = d.id;
@@ -482,13 +507,18 @@ class RecipesPanel extends HTMLElement {
     }
   }
 
-  async _plan(recipeId, servings) {
+  async _plan(recipeId, servings, cooked = false) {
     try {
       const msg = { type: "recipes/plan", recipe_id: recipeId };
       if (recipeId && servings) msg.servings = servings;
+      if (!recipeId && cooked) msg.cooked = true;
       const res = await this._hass.callWS(msg);
       this._planned = res.planned;
-      this._toast(res.planned ? this._t.plannedToast(res.planned.title) : this._t.clearedToast);
+      this._toast(
+        res.planned ? this._t.plannedToast(res.planned.title)
+          : res.cooked ? this._t.doneToast(res.cooked.cooked_count) : this._t.clearedToast
+      );
+      if (res.cooked) await this._load();
       this._render();
     } catch (err) {
       this._toast(err.message || String(err));
@@ -625,10 +655,30 @@ class RecipesPanel extends HTMLElement {
 
   _filtered() {
     const q = this._search.trim().toLowerCase();
-    if (!q) return this._recipes;
-    return this._recipes.filter(
+    let list = !q ? [...this._recipes] : this._recipes.filter(
       (r) => r.title.toLowerCase().includes(q) || r.ingredients_text.some((i) => i.toLowerCase().includes(q))
     );
+    const sort = this._sort;
+    if (sort === "most") list.sort((a, b) => (b.cooked_count || 0) - (a.cooked_count || 0) || a.title.localeCompare(b.title));
+    if (sort === "oldest") list.sort((a, b) => (a.last_cooked || "").localeCompare(b.last_cooked || "") || a.title.localeCompare(b.title));
+    return list;
+  }
+
+  get _sort() {
+    return localStorage.getItem("recipes-sort") || "az";
+  }
+
+  _dateText(iso) {
+    const lang = this._hass?.locale?.language || this._hass?.language || "en";
+    const d = new Date(`${iso}T12:00:00`);
+    const sameYear = d.getFullYear() === new Date().getFullYear();
+    return d.toLocaleDateString(lang, sameYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
+  }
+
+  _cookedLine(r) {
+    const t = this._t;
+    if (!r.cooked_count) return t.neverCooked;
+    return r.last_cooked ? `${t.cooked(r.cooked_count)} · ${t.lastCooked(this._dateText(r.last_cooked))}` : t.cooked(r.cooked_count);
   }
 
   _cardsHtml() {
@@ -644,7 +694,7 @@ class RecipesPanel extends HTMLElement {
           ${r.photo_url ? `<img src="${esc(r.photo_url)}" alt="" loading="lazy">` : `<div class="placeholder"><ha-icon icon="mdi:silverware-fork-knife"></ha-icon></div>`}
           <div class="card-text">
             <div class="card-title">${esc(r.title)}</div>
-            <div class="meta">${t.people(r.servings)} · ${t.ingredientsCount(r.ingredients.length)}</div>
+            <div class="meta">${t.people(r.servings)} · ${this._cookedLine(r)}</div>
           </div>
         </button>`
       )
@@ -656,7 +706,12 @@ class RecipesPanel extends HTMLElement {
     const search = this._recipes.length > 4
       ? `<div class="search"><ha-icon icon="mdi:magnify"></ha-icon><input id="search" data-field="search" placeholder="${t.search}" value="${esc(this._search)}"></div>`
       : "";
-    return `${this._plannedHtml()}${search}<div class="grid" id="grid">${this._cardsHtml()}</div>`;
+    const sorts = this._recipes.length > 1
+      ? `<div class="sorts">${[["az", t.sortAz], ["most", t.sortMost], ["oldest", t.sortOldest]]
+          .map(([k, label]) => `<button class="chip ${this._sort === k ? "active" : ""}" data-action="sort" data-sort="${k}">${label}</button>`)
+          .join("")}</div>`
+      : "";
+    return `${this._plannedHtml()}${search}${sorts}<div class="grid" id="grid">${this._cardsHtml()}</div>`;
   }
 
   _plannedHtml() {
@@ -721,7 +776,8 @@ class RecipesPanel extends HTMLElement {
       <div class="detail">
         ${r.photo_url ? `<img class="hero" src="${esc(r.photo_url)}" alt="">` : ""}
         <h1>${esc(r.title)}</h1>
-        <div class="meta big"><ha-icon icon="mdi:account-group"></ha-icon> ${t.people(r.servings)}</div>
+        <div class="meta big"><ha-icon icon="mdi:account-group"></ha-icon> ${t.people(r.servings)}
+          <ha-icon icon="mdi:chef-hat" class="sep-icon"></ha-icon> ${this._cookedLine(r)}</div>
         <div class="actions">
           <button class="primary wide" data-action="open-add" ${r.ingredients.length ? "" : "disabled"}>
             <ha-icon icon="mdi:cart-plus"></ha-icon><span>${t.addToList}</span>
@@ -763,6 +819,13 @@ class RecipesPanel extends HTMLElement {
         <input id="f-title" data-field="title" value="${esc(d.title)}" autocomplete="off">
         <label for="f-servings">${t.servings}</label>
         <input id="f-servings" data-field="servings" type="number" min="1" max="50" inputmode="numeric" value="${esc(d.servings)}">
+        ${d.id ? `
+        <div class="two-col">
+          <div><label for="f-count">${t.cookedCount}</label>
+            <input id="f-count" data-field="cooked_count" type="number" min="0" inputmode="numeric" value="${esc(d.cooked_count)}"></div>
+          <div><label for="f-last">${t.lastCookedLabel}</label>
+            <input id="f-last" data-field="last_cooked" type="date" value="${esc(d.last_cooked)}"></div>
+        </div>` : ""}
         <label>${t.ingredients}</label>
         <div class="help">${t.ingredientsHelp}</div>
         <datalist id="units">${UNITS.map((u) => `<option value="${u}">`).join("")}</datalist>
@@ -879,6 +942,13 @@ const STYLE = `
   .muted, .help { color: var(--secondary-text-color); }
   .help { font-size: 13px; margin: -2px 0 6px; }
   .empty { text-align: center; color: var(--secondary-text-color); margin-top: 48px; }
+  .sorts { display: flex; gap: 8px; max-width: 1200px; margin: -4px auto 14px; flex-wrap: wrap; }
+  .chip { background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: 16px;
+          padding: 6px 14px; font-size: 14px; color: var(--primary-text-color); }
+  .chip.active { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
+  .meta.big .sep-icon { margin-left: 10px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .two-col label { display: block; }
   .search { display: flex; align-items: center; gap: 8px; background: var(--card-background-color); border-radius: 24px;
             padding: 0 16px; height: 44px; margin: 0 auto 16px; max-width: 1200px; border: 1px solid var(--divider-color); }
   .search input { border: none; outline: none; background: none; color: inherit; font: inherit; flex: 1; height: 100%; }

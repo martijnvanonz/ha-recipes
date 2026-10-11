@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant, callback
 from .const import MAX_SERVINGS
 from .panel import async_register_panel, default_title
 from .scaling import format_ingredient, scale_ingredients
+from .services import fire_cooked
 from .shopping import async_add_to_list
 from .store import RecipeError
 
@@ -84,13 +85,15 @@ async def ws_set_list(hass, connection, msg) -> None:
         ],
         vol.Optional("steps"): [str],
         vol.Optional("photo"): vol.Any(str, None),
+        vol.Optional("cooked_count"): vol.All(int, vol.Range(min=0)),
+        vol.Optional("last_cooked"): vol.Any(None, str),
     }
 )
 @websocket_api.async_response
 @_handle_errors
 async def ws_save(hass, connection, msg) -> None:
     store = _data(hass).store
-    data = {k: msg[k] for k in ("title", "servings", "ingredients", "steps") if k in msg}
+    data = {k: msg[k] for k in ("title", "servings", "ingredients", "steps", "cooked_count", "last_cooked") if k in msg}
     if "recipe_id" in msg:
         data["id"] = msg["recipe_id"]
     current = store.recipes.get(msg.get("recipe_id", ""))
@@ -149,14 +152,24 @@ async def ws_add(hass, connection, msg) -> None:
         vol.Required("type"): "recipes/plan",
         vol.Required("recipe_id"): vol.Any(None, str),
         vol.Optional("servings"): _SERVINGS,
+        # With recipe_id None: also count the planned recipe as made ("Done cooking").
+        vol.Optional("cooked", default=False): bool,
     }
 )
 @websocket_api.async_response
 @_handle_errors
 async def ws_plan(hass, connection, msg) -> None:
     store = _data(hass).store
-    await store.async_plan(msg["recipe_id"], msg.get("servings"))
-    connection.send_result(msg["id"], {"planned": store.planned_info()})
+    cooked = None
+    if msg["recipe_id"] is None:
+        cooked = await store.async_clear_plan(msg["cooked"])
+        if cooked:
+            fire_cooked(hass, cooked)
+    else:
+        await store.async_plan(msg["recipe_id"], msg.get("servings"))
+    connection.send_result(
+        msg["id"], {"planned": store.planned_info(), "cooked": cooked.as_dict() if cooked else None}
+    )
 
 
 @websocket_api.websocket_command(

@@ -34,6 +34,15 @@ save:
     remove_photo:
       selector:
         boolean:
+    cooked_count:
+      selector:
+        number:
+          min: 0
+          max: 1000
+          mode: box
+    last_cooked:
+      selector:
+        date:
 delete:
   fields:
     id:
@@ -91,3 +100,20 @@ plan:
           max: 50
           mode: box
 clear_plan:
+  fields:
+    cooked:
+      default: false
+      selector:
+        boolean:
+mark_cooked:
+  fields:
+    id:
+      selector:
+        text:
+    title:
+      example: "Taco wraps"
+      selector:
+        text:
+    date:
+      selector:
+        date:

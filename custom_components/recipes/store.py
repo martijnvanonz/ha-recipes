@@ -50,6 +50,8 @@ class Recipe:
     photo: str | None = None
     created: str = ""
     updated: str = ""
+    cooked_count: int = 0
+    last_cooked: str | None = None  # local date, YYYY-MM-DD
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -101,6 +103,15 @@ def ingredients(value: Any) -> list[dict[str, str]]:
             for line in lines([str(item)]):
                 out.append(ingredient_from_text(line))
     return out
+
+
+def _valid_date(value: Any) -> str:
+    """Accept a date or 'YYYY-MM-DD' text; return 'YYYY-MM-DD'."""
+    text = value.isoformat() if hasattr(value, "isoformat") else str(value).strip()
+    parsed = dt_util.parse_date(text[:10])
+    if parsed is None:
+        raise RecipeError(f"'{value}' is not a date (use YYYY-MM-DD)")
+    return parsed.isoformat()
 
 
 class RecipeStore:
@@ -184,6 +195,28 @@ class RecipeStore:
             }
         await self._async_save()
 
+    async def async_clear_plan(self, cooked: bool = False) -> Recipe | None:
+        """Clear the planned recipe. With cooked=True it also counts as made."""
+        recipe = None
+        if cooked and self.planned and self.planned.get("recipe_id") in self.recipes:
+            recipe = self.recipes[self.planned["recipe_id"]]
+            self._count_cooked(recipe)
+        self.planned = None
+        await self._async_save()
+        return recipe
+
+    async def async_mark_cooked(self, recipe_id: str, on: str | None = None) -> Recipe:
+        recipe = self.find(recipe_id)
+        self._count_cooked(recipe, on)
+        await self._async_save()
+        return recipe
+
+    def _count_cooked(self, recipe: Recipe, on: str | None = None) -> None:
+        recipe.cooked_count += 1
+        day = _valid_date(on) if on else dt_util.now().date().isoformat()
+        if not recipe.last_cooked or day >= recipe.last_cooked:
+            recipe.last_cooked = day
+
     async def async_set_panel_title(self, title: str | None) -> None:
         title = (title or "").strip() or None
         if title and len(title) > 40:
@@ -245,6 +278,13 @@ class RecipeStore:
             recipe.ingredients = ingredients(data["ingredients"])
         if "steps" in data:
             recipe.steps = lines(data["steps"])
+        if "cooked_count" in data and data["cooked_count"] is not None:
+            count = int(data["cooked_count"])
+            if count < 0:
+                raise RecipeError("The count cannot be negative")
+            recipe.cooked_count = count
+        if "last_cooked" in data:
+            recipe.last_cooked = _valid_date(data["last_cooked"]) if data["last_cooked"] else None
         old_photo = recipe.photo
         if photo is not None or data.get("remove_photo"):
             recipe.photo = photo

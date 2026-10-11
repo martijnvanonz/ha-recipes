@@ -17,7 +17,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN, MAX_SERVINGS, PHOTO_MAX_BYTES
+from .const import DOMAIN, EVENT_COOKED, MAX_SERVINGS, PHOTO_MAX_BYTES
 from .scaling import format_ingredient, scale_ingredients
 from .shopping import async_add_to_list, select_items
 from .store import RecipeError
@@ -46,6 +46,8 @@ SAVE_SCHEMA = vol.Schema(
         vol.Exclusive("photo_url", "photo"): cv.url,
         vol.Exclusive("photo_base64", "photo"): cv.string,
         vol.Optional("remove_photo"): cv.boolean,
+        vol.Optional("cooked_count"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        vol.Optional("last_cooked"): vol.Any(None, cv.date),
     }
 )
 DELETE_SCHEMA = vol.Schema({vol.Required("id"): cv.string})
@@ -60,6 +62,14 @@ ADD_SCHEMA = vol.Schema(
         vol.Optional("plan", default=True): cv.boolean,
     }
 )
+COOKED_SCHEMA = vol.Schema(
+    {
+        vol.Exclusive("id", "recipe"): cv.string,
+        vol.Exclusive("title", "recipe"): cv.string,
+        vol.Optional("date"): cv.date,
+    }
+)
+CLEAR_PLAN_SCHEMA = vol.Schema({vol.Optional("cooked", default=False): cv.boolean})
 PLAN_SCHEMA = vol.Schema(
     {
         vol.Exclusive("id", "recipe"): cv.string,
@@ -101,11 +111,22 @@ async def _photo_from_call(hass: HomeAssistant, data: dict[str, Any]) -> str | N
     return None
 
 
+def fire_cooked(hass: HomeAssistant, recipe) -> None:
+    hass.bus.async_fire(
+        EVENT_COOKED,
+        {"recipe_id": recipe.id, "title": recipe.title, "cooked_count": recipe.cooked_count,
+         "last_cooked": recipe.last_cooked},
+    )
+
+
 def async_register_services(hass: HomeAssistant) -> None:
     async def save(call: ServiceCall) -> ServiceResponse:
         try:
             photo = await _photo_from_call(hass, call.data)
-            recipe = await _data(hass).store.async_save_recipe(dict(call.data), photo)
+            data = dict(call.data)
+            if data.get("last_cooked"):
+                data["last_cooked"] = data["last_cooked"].isoformat()
+            recipe = await _data(hass).store.async_save_recipe(data, photo)
         except RecipeError as err:
             raise ServiceValidationError(str(err)) from err
         return {"recipe": recipe.as_dict()}
@@ -149,12 +170,26 @@ def async_register_services(hass: HomeAssistant) -> None:
 
     async def clear_plan(call: ServiceCall) -> None:
         try:
-            await _data(hass).store.async_plan(None)
+            recipe = await _data(hass).store.async_clear_plan(call.data["cooked"])
         except RecipeError as err:
             raise ServiceValidationError(str(err)) from err
+        if recipe:
+            fire_cooked(hass, recipe)
+
+    async def mark_cooked(call: ServiceCall) -> ServiceResponse:
+        try:
+            store = _data(hass).store
+            recipe = store.find(call.data.get("id"), call.data.get("title"))
+            day = call.data.get("date")
+            await store.async_mark_cooked(recipe.id, day.isoformat() if day else None)
+        except RecipeError as err:
+            raise ServiceValidationError(str(err)) from err
+        fire_cooked(hass, recipe)
+        return {"recipe": recipe.title, "cooked_count": recipe.cooked_count, "last_cooked": recipe.last_cooked}
 
     hass.services.async_register(DOMAIN, "plan", plan, PLAN_SCHEMA)
-    hass.services.async_register(DOMAIN, "clear_plan", clear_plan, vol.Schema({}))
+    hass.services.async_register(DOMAIN, "clear_plan", clear_plan, CLEAR_PLAN_SCHEMA)
+    hass.services.async_register(DOMAIN, "mark_cooked", mark_cooked, COOKED_SCHEMA, SupportsResponse.OPTIONAL)
     hass.services.async_register(DOMAIN, "save", save, SAVE_SCHEMA, SupportsResponse.OPTIONAL)
     hass.services.async_register(DOMAIN, "delete", delete, DELETE_SCHEMA)
     hass.services.async_register(DOMAIN, "list", list_recipes, vol.Schema({}), SupportsResponse.ONLY)

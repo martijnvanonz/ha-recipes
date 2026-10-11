@@ -6,6 +6,7 @@ import base64
 import io
 
 import pytest
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.setup import async_setup_component
@@ -333,3 +334,44 @@ async def test_panel_title(hass: HomeAssistant, setup, hass_ws_client, hass_admi
     hass_admin_user.groups = []
     await ws2.send_json({"id": 4, "type": "recipes/set_panel_title", "title": "Nope"})
     assert (await ws2.receive_json())["error"]["code"] == "unauthorized"
+
+
+async def test_cooked_counter(hass: HomeAssistant, setup, hass_ws_client) -> None:
+    events = []
+    hass.bus.async_listen("recipes_cooked", lambda e: events.append(e.data))
+    recipe = (await call(hass, "save", TACOS))["recipe"]
+    assert recipe["cooked_count"] == 0 and recipe["last_cooked"] is None
+
+    # Clearing without cooked does not count; with cooked it counts once.
+    await call(hass, "plan", {"id": recipe["id"]}, response=False)
+    await call(hass, "clear_plan", response=False)
+    await call(hass, "plan", {"id": recipe["id"]}, response=False)
+    await call(hass, "clear_plan", {"cooked": True}, response=False)
+    await call(hass, "clear_plan", {"cooked": True}, response=False)  # nothing planned: no double count
+    await hass.async_block_till_done()
+    listed = (await call(hass, "list"))["recipes"][0]
+    assert listed["cooked_count"] == 1 and listed["last_cooked"]
+    assert len(events) == 1 and events[0]["cooked_count"] == 1
+
+    # mark_cooked with an older date keeps the newest last_cooked.
+    newest = listed["last_cooked"]
+    resp = await call(hass, "mark_cooked", {"title": "taco", "date": "2020-01-05"})
+    assert resp["cooked_count"] == 2 and resp["last_cooked"] == newest
+
+    # Manual adjust.
+    resp = (await call(hass, "save", {"id": recipe["id"], "cooked_count": 7, "last_cooked": "2026-01-02"}))["recipe"]
+    assert resp["cooked_count"] == 7 and resp["last_cooked"] == "2026-01-02"
+
+    # Websocket "Done cooking".
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "recipes/plan", "recipe_id": recipe["id"]})
+    await ws.receive_json()
+    await ws.send_json({"id": 2, "type": "recipes/plan", "recipe_id": None, "cooked": True})
+    res = (await ws.receive_json())["result"]
+    assert res["planned"] is None and res["cooked"]["cooked_count"] == 8
+    await ws.send_json({"id": 3, "type": "recipes/save", "recipe_id": recipe["id"], "cooked_count": 3, "last_cooked": None})
+    res = (await ws.receive_json())["result"]["recipe"]
+    assert res["cooked_count"] == 3 and res["last_cooked"] is None
+
+    with pytest.raises(vol.Invalid):  # rejected by the service schema
+        await call(hass, "save", {"id": recipe["id"], "last_cooked": "not a date"})

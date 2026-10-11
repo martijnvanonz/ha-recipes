@@ -60,6 +60,14 @@
         "remove_photo": {
           "name": "Remove photo",
           "description": "Remove the current photo."
+        },
+        "cooked_count": {
+          "name": "Times made",
+          "description": "Set how often you made this recipe."
+        },
+        "last_cooked": {
+          "name": "Last made",
+          "description": "Date you last made this recipe."
         }
       }
     },
@@ -131,7 +139,31 @@
     },
     "clear_plan": {
       "name": "Clear planned recipe",
-      "description": "Clear the planned recipe (for example after dinner)."
+      "description": "Clear the planned recipe (for example after dinner).",
+      "fields": {
+        "cooked": {
+          "name": "Cooked",
+          "description": "Count the planned recipe as made (+1 and today as last made)."
+        }
+      }
+    },
+    "mark_cooked": {
+      "name": "Mark as made",
+      "description": "Count a recipe as made: +1 and the date as last made.",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "ID of the recipe."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Name of the recipe (a unique part of the name is enough)."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Day you made it. Default: today."
+        }
+      }
     }
   },
   "entity": {
