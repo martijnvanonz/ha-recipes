@@ -9,7 +9,9 @@ Keep your recipes in Home Assistant and put the ingredients on your shopping lis
 
 ## Install
 
-Copy `custom_components/recipes` to your HA config (or add this repo to HACS as a custom repository), restart, then add the **Recipes** integration and pick your shopping list.
+With HACS: **HACS → ⋮ → Custom repositories**, add `https://github.com/martijnvanonz/ha-recipes` as type **Integration**, download **Recipes** and restart Home Assistant. Without HACS: copy `custom_components/recipes` into your config folder and restart.
+
+Then go to **Settings → Devices & services → Add integration → Recipes** and pick your shopping list (a to-do list). Each user can choose their own list in the tab via ⚙️.
 
 ## Services
 
@@ -47,5 +49,7 @@ Amounts at the start of a line are scaled: `250 g`, `½`, `1½`, `1/2`, `0,5`, `
 ## Development
 
 ```bash
-python -m pytest
+python -m pytest                       # tests
+cd dev && docker compose up -d          # local HA on http://localhost:8124 (dev/ is not in git)
+python scripts/make_brand.py            # icon and logo
 ```
