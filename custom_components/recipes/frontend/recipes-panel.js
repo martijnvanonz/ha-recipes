@@ -60,6 +60,9 @@ const STRINGS = {
     planned: "On the menu",
     plannedToast: (title) => `${title} is on the menu`,
     clearedToast: "Enjoy your meal!",
+    sidebarName: "Name in the sidebar",
+    sidebarHelp: (def) => `The same for everyone (only admins can change it). Leave empty for the default: ${def}.`,
+    sidebarSaved: "Name saved",
   },
   nl: {
     title: "Recepten",
@@ -119,6 +122,9 @@ const STRINGS = {
     planned: "Op het menu",
     plannedToast: (title) => `${title} staat op het menu`,
     clearedToast: "Eet smakelijk!",
+    sidebarName: "Naam in het zijmenu",
+    sidebarHelp: (def) => `Voor iedereen hetzelfde (alleen beheerders kunnen het wijzigen). Leeg laten voor de standaard: ${def}.`,
+    sidebarSaved: "Naam opgeslagen",
   },
 };
 
@@ -201,6 +207,7 @@ class RecipesPanel extends HTMLElement {
       this._recipes = res.recipes;
       this._lists = { current: res.shopping_list, own: res.own_shopping_list, def: res.default_shopping_list };
       this._planned = res.planned;
+      this._panelTitle = { value: res.panel_title, def: res.default_panel_title };
       if (this._current) this._current = this._recipes.find((r) => r.id === this._current.id) || null;
       if (!this._current && this._view === "detail") this._view = "list";
     } catch (err) {
@@ -276,6 +283,9 @@ class RecipesPanel extends HTMLElement {
       case "settings":
         this._view = "settings";
         this._render();
+        break;
+      case "save-panel-title":
+        this._savePanelTitle();
         break;
       case "pick-list":
         this._setList(el.dataset.entity || null);
@@ -496,6 +506,17 @@ class RecipesPanel extends HTMLElement {
     }
   }
 
+  async _savePanelTitle() {
+    const value = this.shadowRoot.querySelector("#panel-title")?.value ?? "";
+    try {
+      const res = await this._hass.callWS({ type: "recipes/set_panel_title", title: value.trim() || null });
+      this._panelTitle = { ...this._panelTitle, value: value.trim() || null };
+      this._toast(`${this._t.sidebarSaved}: ${res.panel_title}`);
+    } catch (err) {
+      this._toast(err.message || String(err));
+    }
+  }
+
   _listName(entityId) {
     return this._hass.states[entityId]?.attributes?.friendly_name || entityId;
   }
@@ -676,6 +697,14 @@ class RecipesPanel extends HTMLElement {
           ${option(null, t.useDefault(this._listName(def)), !own)}
           ${lists.map((e) => option(e, this._listName(e), own === e)).join("")}
         </div>
+        ${this._hass.user?.is_admin ? `
+          <h2 class="settings-h2">${t.sidebarName}</h2>
+          <div class="help">${t.sidebarHelp(esc(this._panelTitle?.def || ""))}</div>
+          <div class="title-row">
+            <input id="panel-title" maxlength="40" value="${esc(this._panelTitle?.value || "")}"
+                   placeholder="${esc(this._panelTitle?.def || "")}" autocomplete="off">
+            <button class="primary" data-action="save-panel-title"><span>${t.save}</span></button>
+          </div>` : ""}
       </div>`;
   }
 
@@ -929,6 +958,9 @@ const STYLE = `
   .list-option { width: 100%; background: none; border: none; border-bottom: 1px solid var(--divider-color); text-align: left;
                  color: var(--primary-text-color); }
   .list-option ha-icon { color: var(--primary-color); }
+  .settings-h2 { margin-top: 28px; }
+  .title-row { display: flex; gap: 8px; margin-top: 8px; }
+  .title-row input { flex: 1; }
   .settings-list { margin-top: 12px; border-radius: 12px; background: var(--card-background-color); padding: 0 12px; }
   .item input { width: 20px; height: 20px; accent-color: var(--primary-color); flex: none; }
 `;

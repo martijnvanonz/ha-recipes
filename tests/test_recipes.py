@@ -308,3 +308,28 @@ async def test_planned_recipe(hass: HomeAssistant, setup, hass_ws_client) -> Non
     await call(hass, "delete", {"id": recipe["id"]}, response=False)
     await hass.async_block_till_done()
     assert hass.states.get(sensor).state == "unknown"
+
+
+async def test_panel_title(hass: HomeAssistant, setup, hass_ws_client, hass_admin_user) -> None:
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "recipes/list"})
+    res = (await ws.receive_json())["result"]
+    assert res["panel_title"] is None and res["default_panel_title"] == "Recipes"
+
+    await ws.send_json({"id": 2, "type": "recipes/set_panel_title", "title": "  Koken "})
+    assert (await ws.receive_json())["result"]["panel_title"] == "Koken"
+    await hass.config_entries.async_reload(setup.entry_id)
+    ws2 = await hass_ws_client(hass)
+    await ws2.send_json({"id": 1, "type": "recipes/list"})
+    assert (await ws2.receive_json())["result"]["panel_title"] == "Koken"  # stored
+
+    await ws2.send_json({"id": 2, "type": "recipes/set_panel_title", "title": "x" * 41})
+    assert not (await ws2.receive_json())["success"]
+
+    await ws2.send_json({"id": 3, "type": "recipes/set_panel_title", "title": ""})
+    assert (await ws2.receive_json())["result"]["panel_title"] == "Recipes"  # back to default
+
+    # Non-admins may not change it.
+    hass_admin_user.groups = []
+    await ws2.send_json({"id": 4, "type": "recipes/set_panel_title", "title": "Nope"})
+    assert (await ws2.receive_json())["error"]["code"] == "unauthorized"

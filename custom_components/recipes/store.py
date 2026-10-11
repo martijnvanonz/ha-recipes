@@ -112,6 +112,7 @@ class RecipeStore:
         self.recipes: dict[str, Recipe] = {}
         self.user_lists: dict[str, str] = {}  # HA user id -> to-do entity
         self.planned: dict[str, Any] | None = None  # {"recipe_id", "servings", "since"}
+        self.panel_title: str | None = None  # sidebar name; None = default for the server language
         self.photo_dir = Path(hass.config.path(PHOTO_DIR))
         self._listeners: list[Callable[[], None]] = []
 
@@ -136,6 +137,7 @@ class RecipeStore:
             self.recipes[raw["id"]] = Recipe(**raw)
         self.user_lists = dict(data.get("user_lists", {}))
         self.planned = data.get("planned")
+        self.panel_title = data.get("panel_title")
         if self.planned and self.planned.get("recipe_id") not in self.recipes:
             self.planned = None
         await self.hass.async_add_executor_job(lambda: self.photo_dir.mkdir(exist_ok=True))
@@ -146,6 +148,7 @@ class RecipeStore:
                 "recipes": [asdict(r) for r in self.recipes.values()],
                 "user_lists": self.user_lists,
                 "planned": self.planned,
+                "panel_title": self.panel_title,
             }
         )
         self._changed()
@@ -179,6 +182,13 @@ class RecipeStore:
                 "servings": int(servings) if servings else recipe.servings,
                 "since": dt_util.utcnow().isoformat(),
             }
+        await self._async_save()
+
+    async def async_set_panel_title(self, title: str | None) -> None:
+        title = (title or "").strip() or None
+        if title and len(title) > 40:
+            raise RecipeError("The name is too long (max 40 characters)")
+        self.panel_title = title
         await self._async_save()
 
     async def async_set_user_list(self, user_id: str, entity_id: str | None) -> None:

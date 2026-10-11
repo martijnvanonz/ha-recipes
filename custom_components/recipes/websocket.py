@@ -9,6 +9,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
 from .const import MAX_SERVINGS
+from .panel import async_register_panel, default_title
 from .scaling import format_ingredient, scale_ingredients
 from .shopping import async_add_to_list
 from .store import RecipeError
@@ -45,6 +46,8 @@ async def ws_list(hass, connection, msg) -> None:
             "own_shopping_list": data.store.user_lists.get(connection.user.id),
             "default_shopping_list": data.shopping_list,
             "planned": data.store.planned_info(),
+            "panel_title": data.store.panel_title,
+            "default_panel_title": default_title(hass),
         },
     )
 
@@ -156,7 +159,20 @@ async def ws_plan(hass, connection, msg) -> None:
     connection.send_result(msg["id"], {"planned": store.planned_info()})
 
 
+@websocket_api.websocket_command(
+    {vol.Required("type"): "recipes/set_panel_title", vol.Required("title"): vol.Any(None, str)}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+@_handle_errors
+async def ws_set_panel_title(hass, connection, msg) -> None:
+    store = _data(hass).store
+    await store.async_set_panel_title(msg["title"])
+    await async_register_panel(hass, store.panel_title, replace=True)
+    connection.send_result(msg["id"], {"panel_title": store.panel_title or default_title(hass)})
+
+
 @callback
 def async_register_websocket(hass: HomeAssistant) -> None:
-    for command in (ws_list, ws_save, ws_delete, ws_scale, ws_add, ws_set_list, ws_plan):
+    for command in (ws_list, ws_save, ws_delete, ws_scale, ws_add, ws_set_list, ws_plan, ws_set_panel_title):
         websocket_api.async_register_command(hass, command)

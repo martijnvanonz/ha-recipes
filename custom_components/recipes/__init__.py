@@ -66,7 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: RecipesConfigEntry) -> b
             ]
         )
         hass.http.register_view(PhotoUploadView())
-    await async_register_panel(hass)
+    await async_register_panel(hass, store.panel_title)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
