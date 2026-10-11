@@ -1,0 +1,107 @@
+{
+  "config": {
+    "abort": {
+      "single_instance_allowed": "Recipes is already set up."
+    },
+    "step": {
+      "user": {
+        "title": "Recipes",
+        "description": "Pick the to-do list that ingredients are added to.",
+        "data": {
+          "shopping_list": "Shopping list"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Recipes",
+        "description": "Pick the to-do list that ingredients are added to.",
+        "data": {
+          "shopping_list": "Shopping list"
+        }
+      }
+    }
+  },
+  "services": {
+    "save": {
+      "name": "Save recipe",
+      "description": "Create a recipe, or update it when an ID is given (only the given fields change).",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "ID of an existing recipe to update. Leave empty to create a new recipe."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Name of the recipe."
+        },
+        "servings": {
+          "name": "Servings",
+          "description": "Number of people the recipe is for."
+        },
+        "ingredients": {
+          "name": "Ingredients",
+          "description": "One ingredient per line, with the amount first (for example '250 g pasta')."
+        },
+        "steps": {
+          "name": "Steps",
+          "description": "One cooking step per line."
+        },
+        "photo_url": {
+          "name": "Photo URL",
+          "description": "Web address of a photo to download."
+        },
+        "photo_base64": {
+          "name": "Photo (base64)",
+          "description": "Photo as base64 text or data URL."
+        },
+        "remove_photo": {
+          "name": "Remove photo",
+          "description": "Remove the current photo."
+        }
+      }
+    },
+    "delete": {
+      "name": "Delete recipe",
+      "description": "Delete a recipe and its photo.",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "ID of the recipe."
+        }
+      }
+    },
+    "list": {
+      "name": "List recipes",
+      "description": "Return all recipes with their ingredients and steps."
+    },
+    "add_to_shopping_list": {
+      "name": "Add to shopping list",
+      "description": "Put the ingredients of a recipe on the shopping list. Items that are already on the list are skipped.",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "ID of the recipe."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Name of the recipe (a unique part of the name is enough)."
+        },
+        "servings": {
+          "name": "Servings",
+          "description": "Scale the amounts to this number of people."
+        },
+        "only": {
+          "name": "Only",
+          "description": "Only add ingredients that contain one of these words."
+        },
+        "exclude": {
+          "name": "Exclude",
+          "description": "Skip ingredients that contain one of these words."
+        }
+      }
+    }
+  }
+}

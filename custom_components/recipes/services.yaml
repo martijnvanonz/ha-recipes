@@ -1,0 +1,69 @@
+save:
+  fields:
+    id:
+      selector:
+        text:
+    title:
+      example: "Taco wraps"
+      selector:
+        text:
+    servings:
+      example: 2
+      selector:
+        number:
+          min: 1
+          max: 50
+          mode: box
+    ingredients:
+      example: "300 g minced beef\n1 red onion\nwraps"
+      selector:
+        text:
+          multiline: true
+    steps:
+      example: "Chop the onion.\nFry the beef."
+      selector:
+        text:
+          multiline: true
+    photo_url:
+      selector:
+        text:
+          type: url
+    photo_base64:
+      selector:
+        text:
+          multiline: true
+    remove_photo:
+      selector:
+        boolean:
+delete:
+  fields:
+    id:
+      required: true
+      selector:
+        text:
+list:
+add_to_shopping_list:
+  fields:
+    id:
+      selector:
+        text:
+    title:
+      example: "Taco wraps"
+      selector:
+        text:
+    servings:
+      example: 4
+      selector:
+        number:
+          min: 1
+          max: 50
+          mode: box
+    only:
+      selector:
+        text:
+          multiple: true
+    exclude:
+      example: "garlic"
+      selector:
+        text:
+          multiple: true

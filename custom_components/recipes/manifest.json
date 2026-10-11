@@ -1,0 +1,15 @@
+{
+  "domain": "recipes",
+  "name": "Recipes",
+  "after_dependencies": ["frontend", "panel_custom"],
+  "codeowners": ["@martijnvanonz"],
+  "config_flow": true,
+  "dependencies": ["http", "todo", "websocket_api"],
+  "documentation": "https://github.com/martijnvanonz/ha-recipes",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/martijnvanonz/ha-recipes/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

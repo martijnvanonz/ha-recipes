@@ -1,0 +1,107 @@
+{
+  "config": {
+    "abort": {
+      "single_instance_allowed": "Recepten is al ingesteld."
+    },
+    "step": {
+      "user": {
+        "title": "Recepten",
+        "description": "Kies de takenlijst waar ingrediënten op komen.",
+        "data": {
+          "shopping_list": "Boodschappenlijst"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Recepten",
+        "description": "Kies de takenlijst waar ingrediënten op komen.",
+        "data": {
+          "shopping_list": "Boodschappenlijst"
+        }
+      }
+    }
+  },
+  "services": {
+    "save": {
+      "name": "Recept opslaan",
+      "description": "Maak een recept, of werk het bij als er een ID is (alleen de opgegeven velden veranderen).",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "ID van een bestaand recept om bij te werken. Leeg laten voor een nieuw recept."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "Naam van het recept."
+        },
+        "servings": {
+          "name": "Personen",
+          "description": "Voor hoeveel personen het recept is."
+        },
+        "ingredients": {
+          "name": "Ingrediënten",
+          "description": "Eén ingrediënt per regel, met de hoeveelheid vooraan (bijvoorbeeld '250 g pasta')."
+        },
+        "steps": {
+          "name": "Bereiding",
+          "description": "Eén stap per regel."
+        },
+        "photo_url": {
+          "name": "Foto-URL",
+          "description": "Webadres van een foto om te downloaden."
+        },
+        "photo_base64": {
+          "name": "Foto (base64)",
+          "description": "Foto als base64-tekst of data-URL."
+        },
+        "remove_photo": {
+          "name": "Foto verwijderen",
+          "description": "Verwijder de huidige foto."
+        }
+      }
+    },
+    "delete": {
+      "name": "Recept verwijderen",
+      "description": "Verwijder een recept en de foto.",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "ID van het recept."
+        }
+      }
+    },
+    "list": {
+      "name": "Recepten ophalen",
+      "description": "Geef alle recepten terug met ingrediënten en bereiding."
+    },
+    "add_to_shopping_list": {
+      "name": "Op boodschappenlijst",
+      "description": "Zet de ingrediënten van een recept op de boodschappenlijst. Wat er al op staat wordt overgeslagen.",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "ID van het recept."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "Naam van het recept (een uniek deel van de naam is genoeg)."
+        },
+        "servings": {
+          "name": "Personen",
+          "description": "Reken de hoeveelheden om naar dit aantal personen."
+        },
+        "only": {
+          "name": "Alleen",
+          "description": "Alleen ingrediënten met een van deze woorden."
+        },
+        "exclude": {
+          "name": "Behalve",
+          "description": "Sla ingrediënten met een van deze woorden over."
+        }
+      }
+    }
+  }
+}
