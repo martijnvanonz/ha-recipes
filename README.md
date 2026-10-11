@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" width="96" alt="Recipes logo">
+  <img src="https://raw.githubusercontent.com/martijnvanonz/ha-recipes/main/docs/logo.png" width="96" alt="Recipes logo">
 </p>
 
 <h1 align="center">Recipes for Home Assistant</h1>
