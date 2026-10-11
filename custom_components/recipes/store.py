@@ -69,15 +69,27 @@ class RecipeStore:
         self.hass = hass
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.recipes: dict[str, Recipe] = {}
+        self.user_lists: dict[str, str] = {}  # HA user id -> to-do entity
         self.photo_dir = Path(hass.config.path(PHOTO_DIR))
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
         self.recipes = {r["id"]: Recipe(**r) for r in data.get("recipes", [])}
+        self.user_lists = dict(data.get("user_lists", {}))
         await self.hass.async_add_executor_job(lambda: self.photo_dir.mkdir(exist_ok=True))
 
     async def _async_save(self) -> None:
-        await self._store.async_save({"recipes": [asdict(r) for r in self.recipes.values()]})
+        await self._store.async_save(
+            {"recipes": [asdict(r) for r in self.recipes.values()], "user_lists": self.user_lists}
+        )
+
+    async def async_set_user_list(self, user_id: str, entity_id: str | None) -> None:
+        """Set (or with None: clear) the shopping list of one HA user."""
+        if entity_id:
+            self.user_lists[user_id] = entity_id
+        else:
+            self.user_lists.pop(user_id, None)
+        await self._async_save()
 
     def sorted(self) -> list[Recipe]:
         return sorted(self.recipes.values(), key=lambda r: r.title.lower())

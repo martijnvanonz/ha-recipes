@@ -188,3 +188,34 @@ async def test_websocket_and_upload(hass: HomeAssistant, setup, hass_ws_client, 
 
     await ws.send_json({"id": 7, "type": "recipes/delete", "recipe_id": rid})
     assert (await ws.receive_json())["success"]
+
+
+async def test_user_shopping_list(hass: HomeAssistant, setup, hass_ws_client) -> None:
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "recipes/list"})
+    res = (await ws.receive_json())["result"]
+    assert res["shopping_list"] == LIST and res["own_shopping_list"] is None
+
+    await ws.send_json({"id": 2, "type": "recipes/set_shopping_list", "entity_id": "todo.nope"})
+    assert not (await ws.receive_json())["success"]
+
+    await ws.send_json({"id": 3, "type": "recipes/set_shopping_list", "entity_id": LIST})
+    assert (await ws.receive_json())["result"]["shopping_list"] == LIST
+    await ws.send_json({"id": 4, "type": "recipes/list"})
+    assert (await ws.receive_json())["result"]["own_shopping_list"] == LIST
+
+    await ws.send_json({"id": 5, "type": "recipes/add_to_shopping_list", "items": ["1 egg"]})
+    assert (await ws.receive_json())["result"]["shopping_list"] == LIST
+
+    await ws.send_json({"id": 6, "type": "recipes/set_shopping_list", "entity_id": None})
+    await ws.receive_json()
+    await ws.send_json({"id": 7, "type": "recipes/list"})
+    assert (await ws.receive_json())["result"]["own_shopping_list"] is None
+
+
+async def test_service_shopping_list_option(hass: HomeAssistant, setup) -> None:
+    await call(hass, "save", TACOS)
+    resp = await call(hass, "add_to_shopping_list", {"title": "taco", "shopping_list": LIST, "only": ["wraps"]})
+    assert resp["shopping_list"] == LIST and resp["added"] == ["wraps"]
+    with pytest.raises(ServiceValidationError):
+        await call(hass, "add_to_shopping_list", {"title": "taco", "shopping_list": "todo.missing"})

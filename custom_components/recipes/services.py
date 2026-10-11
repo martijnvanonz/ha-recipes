@@ -45,6 +45,7 @@ ADD_SCHEMA = vol.Schema(
         vol.Optional("servings"): _SERVINGS,
         vol.Optional("only"): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("exclude"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("shopping_list"): cv.entity_domain("todo"),
     }
 )
 
@@ -110,10 +111,11 @@ def async_register_services(hass: HomeAssistant) -> None:
             target = call.data.get("servings", recipe.servings)
             items = scale_ingredients(recipe.ingredients, recipe.servings, target)
             items = select_items(items, call.data.get("only"), call.data.get("exclude"))
-            result = await async_add_to_list(hass, data.shopping_list, items)
+            shopping_list = call.data.get("shopping_list", data.shopping_list)
+            result = await async_add_to_list(hass, shopping_list, items)
         except RecipeError as err:
             raise ServiceValidationError(str(err)) from err
-        return {"recipe": recipe.title, "servings": target, **result}
+        return {"recipe": recipe.title, "servings": target, "shopping_list": shopping_list, **result}
 
     hass.services.async_register(DOMAIN, "save", save, SAVE_SCHEMA, SupportsResponse.OPTIONAL)
     hass.services.async_register(DOMAIN, "delete", delete, DELETE_SCHEMA)

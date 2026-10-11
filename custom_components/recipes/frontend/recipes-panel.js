@@ -34,13 +34,27 @@ const STRINGS = {
     uploading: "Uploading…",
     name: "Title",
     servings: "Number of people",
-    ingredientsHelp: "One per line, amount first (e.g. 250 g pasta)",
-    stepsHelp: "One step per line",
+    ingredientsHelp: "Amount can be 250, 0,5, 1/2 or 1½",
     save: "Save",
     saved: "Recipe saved",
     deleted: "Recipe deleted",
     needTitle: "Please enter a title",
     noIngredients: "This recipe has no ingredients yet.",
+    amount: "Amount",
+    unit: "Unit",
+    ingredient: "Ingredient",
+    addIngredient: "Ingredient",
+    addStep: "Step",
+    stepPlaceholder: (n) => `Step ${n}`,
+    remove: "Remove",
+    moveUp: "Move up",
+    moveDown: "Move down",
+    settings: "Settings",
+    shoppingList: "Your shopping list",
+    settingsHelp: "Ingredients you add go to this list. Each person can choose their own.",
+    useDefault: (name) => `Default (${name})`,
+    listSaved: "Shopping list saved",
+    addedTo: (name) => `to ${name}`,
   },
   nl: {
     title: "Recepten",
@@ -74,18 +88,89 @@ const STRINGS = {
     uploading: "Uploaden…",
     name: "Titel",
     servings: "Aantal personen",
-    ingredientsHelp: "Eén per regel, hoeveelheid vooraan (bijv. 250 g pasta)",
-    stepsHelp: "Eén stap per regel",
+    ingredientsHelp: "Hoeveelheid mag 250, 0,5, 1/2 of 1½ zijn",
     save: "Opslaan",
     saved: "Recept opgeslagen",
     deleted: "Recept verwijderd",
     needTitle: "Vul een titel in",
     noIngredients: "Dit recept heeft nog geen ingrediënten.",
+    amount: "Hoeveel",
+    unit: "Eenheid",
+    ingredient: "Ingrediënt",
+    addIngredient: "Ingrediënt",
+    addStep: "Stap",
+    stepPlaceholder: (n) => `Stap ${n}`,
+    remove: "Verwijderen",
+    moveUp: "Omhoog",
+    moveDown: "Omlaag",
+    settings: "Instellingen",
+    shoppingList: "Jouw boodschappenlijst",
+    settingsHelp: "Ingrediënten die je toevoegt komen op deze lijst. Iedereen kan een eigen lijst kiezen.",
+    useDefault: (name) => `Standaard (${name})`,
+    listSaved: "Boodschappenlijst opgeslagen",
+    addedTo: (name) => `op ${name}`,
   },
 };
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+// ---------- ingredient lines <-> rows (amount | unit | name) ----------
+
+const UNITS = ["g", "kg", "mg", "ml", "cl", "dl", "l", "el", "tl", "stuk", "stuks", "blik", "blikken", "zakje", "zakjes",
+  "pak", "pakje", "pakjes", "teen", "tenen", "snufje", "bos", "bosje", "plak", "plakken", "scheutje", "kopje", "kopjes",
+  "pot", "potje", "handje", "handvol", "theelepel", "eetlepel", "gram", "liter", "cup", "cups", "tbsp", "tsp", "oz", "lb", "pinch"];
+const FRAC = { "½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3, "⅛": 0.125 };
+const FRAC_CHARS = Object.keys(FRAC).join("");
+const AMOUNT_RE = new RegExp(
+  `^\\s*((?:\\d+\\s*[${FRAC_CHARS}]|[${FRAC_CHARS}]|\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?:\\s*[-–]\\s*(?:\\d+\\s*[${FRAC_CHARS}]|[${FRAC_CHARS}]|\\d+/\\d+|\\d+(?:[.,]\\d+)?))?)\\s*(.*)$`
+);
+
+function parseLine(line) {
+  const m = AMOUNT_RE.exec(line);
+  let amount = "";
+  let rest = line.trim();
+  if (m && (!m[2] || !/^\d/.test(m[2]))) {
+    amount = m[1].replace(/\s+/g, " ").trim();
+    rest = m[2];
+  }
+  let unit = "";
+  const u = /^(\S+)\s+(.*)$/.exec(rest);
+  if (amount && u && UNITS.includes(u[1].toLowerCase())) {
+    unit = u[1];
+    rest = u[2];
+  } else if (amount && UNITS.includes(rest.toLowerCase())) {
+    unit = rest;
+    rest = "";
+  }
+  return { amount: prettyAmount(amount), unit, name: rest.trim() };
+}
+
+function prettyAmount(text) {
+  text = String(text || "").trim();
+  const one = (part) => {
+    part = part.trim();
+    let value = null;
+    let m;
+    if ((m = /^(\d+)\s+(\d+)\/(\d+)$/.exec(part))) value = +m[1] + m[2] / m[3];
+    else if ((m = /^(\d+)\/(\d+)$/.exec(part))) value = m[1] / m[2];
+    else if ((m = /^(\d+)\s*([½¼¾⅓⅔⅛])$/.exec(part))) return m[1] + m[2];
+    else if (/^\d+[.,]\d+$/.test(part)) value = parseFloat(part.replace(",", "."));
+    else return part;
+    const whole = Math.floor(value);
+    const rest = value - whole;
+    if (Math.abs(rest) < 0.01) return String(whole);
+    for (const [ch, f] of Object.entries(FRAC)) if (Math.abs(rest - f) < 0.01) return whole ? `${whole}${ch}` : ch;
+    return part;
+  };
+  return text.split(/\s*[-–]\s*/).map(one).join("-");
+}
+
+function joinRow(row) {
+  return [prettyAmount(row.amount), (row.unit || "").trim(), (row.name || "").trim()].filter(Boolean).join(" ");
+}
+
+const emptyRow = () => ({ amount: "", unit: "", name: "" });
 
 class RecipesPanel extends HTMLElement {
   constructor() {
@@ -102,6 +187,8 @@ class RecipesPanel extends HTMLElement {
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
     this.shadowRoot.addEventListener("input", (e) => this._onInput(e));
     this.shadowRoot.addEventListener("change", (e) => this._onChange(e));
+    this.shadowRoot.addEventListener("keydown", (e) => this._onKeyDown(e));
+    this.shadowRoot.addEventListener("focusout", (e) => this._onFocusOut(e));
   }
 
   set hass(hass) {
@@ -128,6 +215,7 @@ class RecipesPanel extends HTMLElement {
     try {
       const res = await this._hass.callWS({ type: "recipes/list" });
       this._recipes = res.recipes;
+      this._lists = { current: res.shopping_list, own: res.own_shopping_list, def: res.default_shopping_list };
       if (this._current) this._current = this._recipes.find((r) => r.id === this._current.id) || null;
       if (!this._current && this._view === "detail") this._view = "list";
     } catch (err) {
@@ -161,7 +249,7 @@ class RecipesPanel extends HTMLElement {
         this._render();
         break;
       case "new":
-        this._draft = { title: "", servings: 2, ingredients: "", steps: "", photo: null, photo_url: null };
+        this._draft = { title: "", servings: 2, ingredients: [emptyRow()], steps: [""], photo: null, photo_url: null };
         this._current = null;
         this._view = "edit";
         this._render();
@@ -172,8 +260,8 @@ class RecipesPanel extends HTMLElement {
           id: r.id,
           title: r.title,
           servings: r.servings,
-          ingredients: r.ingredients.join("\n"),
-          steps: r.steps.join("\n"),
+          ingredients: r.ingredients.length ? r.ingredients.map(parseLine) : [emptyRow()],
+          steps: r.steps.length ? [...r.steps] : [""],
           photo: r.photo,
           photo_url: r.photo_url,
         };
@@ -200,6 +288,39 @@ class RecipesPanel extends HTMLElement {
       case "save":
         this._save();
         break;
+      case "settings":
+        this._view = "settings";
+        this._render();
+        break;
+      case "pick-list":
+        this._setList(el.dataset.entity || null);
+        break;
+      case "add-ingredient":
+        this._addIngredient(this._draft.ingredients.length);
+        break;
+      case "remove-ingredient":
+        this._draft.ingredients.splice(Number(el.dataset.index), 1);
+        if (!this._draft.ingredients.length) this._draft.ingredients.push(emptyRow());
+        this._render();
+        break;
+      case "add-step":
+        this._addStep(this._draft.steps.length);
+        break;
+      case "remove-step":
+        this._draft.steps.splice(Number(el.dataset.index), 1);
+        if (!this._draft.steps.length) this._draft.steps.push("");
+        this._render();
+        break;
+      case "step-up":
+      case "step-down": {
+        const i = Number(el.dataset.index);
+        const j = action === "step-up" ? i - 1 : i + 1;
+        const steps = this._draft.steps;
+        if (j < 0 || j >= steps.length) return;
+        [steps[i], steps[j]] = [steps[j], steps[i]];
+        this._render();
+        break;
+      }
       case "open-add":
         this._openAdd();
         break;
@@ -235,7 +356,63 @@ class RecipesPanel extends HTMLElement {
       this._renderList();
       return;
     }
+    const kind = e.target.dataset.kind;
+    if (this._draft && kind === "ing") {
+      this._draft.ingredients[Number(e.target.dataset.index)][e.target.dataset.part] = e.target.value;
+      return;
+    }
+    if (this._draft && kind === "step") {
+      this._draft.steps[Number(e.target.dataset.index)] = e.target.value;
+      this._autoGrow(e.target);
+      return;
+    }
     if (this._draft && field) this._draft[field] = e.target.value;
+  }
+
+  _onKeyDown(e) {
+    if (e.key !== "Enter" || e.isComposing || !this._draft) return;
+    const kind = e.target.dataset.kind;
+    const index = Number(e.target.dataset.index);
+    if (kind === "ing") {
+      e.preventDefault();
+      if (e.target.dataset.part !== "name") {
+        // Enter in amount/unit: go to the next field of this row.
+        const next = e.target.dataset.part === "amount" ? "unit" : "name";
+        this.shadowRoot.querySelector(`[data-kind="ing"][data-index="${index}"][data-part="${next}"]`)?.focus();
+        return;
+      }
+      this._addIngredient(index + 1);
+    } else if (kind === "step" && !e.shiftKey) {
+      e.preventDefault();
+      this._addStep(index + 1);
+    }
+  }
+
+  _onFocusOut(e) {
+    if (e.target.dataset?.part === "amount" && this._draft) {
+      const pretty = prettyAmount(e.target.value);
+      if (pretty !== e.target.value) {
+        e.target.value = pretty;
+        this._draft.ingredients[Number(e.target.dataset.index)].amount = pretty;
+      }
+    }
+  }
+
+  _addIngredient(at) {
+    this._draft.ingredients.splice(at, 0, emptyRow());
+    this._focus = `[data-kind="ing"][data-index="${at}"][data-part="amount"]`;
+    this._render();
+  }
+
+  _addStep(at) {
+    this._draft.steps.splice(at, 0, "");
+    this._focus = `[data-kind="step"][data-index="${at}"]`;
+    this._render();
+  }
+
+  _autoGrow(el) {
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
   }
 
   _onChange(e) {
@@ -274,13 +451,12 @@ class RecipesPanel extends HTMLElement {
       this._toast(t.needTitle);
       return;
     }
-    const lines = (s) => s.split("\n").map((l) => l.trim()).filter(Boolean);
     const msg = {
       type: "recipes/save",
       title: d.title.trim(),
       servings: Math.max(1, Math.min(50, parseInt(d.servings, 10) || 1)),
-      ingredients: lines(d.ingredients),
-      steps: lines(d.steps),
+      ingredients: d.ingredients.map(joinRow).filter(Boolean),
+      steps: d.steps.map((s) => s.trim()).filter(Boolean),
       photo: d.photo || null,
     };
     if (d.id) msg.recipe_id = d.id;
@@ -294,6 +470,21 @@ class RecipesPanel extends HTMLElement {
     } catch (err) {
       this._toast(err.message || String(err));
     }
+  }
+
+  async _setList(entityId) {
+    try {
+      const res = await this._hass.callWS({ type: "recipes/set_shopping_list", entity_id: entityId });
+      this._lists = { ...this._lists, current: res.shopping_list, own: entityId };
+      this._toast(this._t.listSaved);
+      this._render();
+    } catch (err) {
+      this._toast(err.message || String(err));
+    }
+  }
+
+  _listName(entityId) {
+    return this._hass.states[entityId]?.attributes?.friendly_name || entityId;
   }
 
   async _delete() {
@@ -334,7 +525,10 @@ class RecipesPanel extends HTMLElement {
     try {
       const res = await this._hass.callWS({ type: "recipes/add_to_shopping_list", items });
       const t = this._t;
-      this._toast(res.added.length ? t.added(res.added.length, res.skipped.length) : t.nothingAdded(res.skipped.length));
+      const where = t.addedTo(this._listName(res.shopping_list));
+      this._toast(
+        (res.added.length ? t.added(res.added.length, res.skipped.length) : t.nothingAdded(res.skipped.length)) + ` ${where}`
+      );
       this._dialog = null;
       this._render();
     } catch (err) {
@@ -358,8 +552,13 @@ class RecipesPanel extends HTMLElement {
       : "";
     let right = "";
     if (this._view === "list") {
-      right = `<button class="primary small" data-action="new"><ha-icon icon="mdi:plus"></ha-icon><span>${t.new}</span></button>`;
+      right = `<button class="icon" data-action="settings" aria-label="${t.settings}"><ha-icon icon="mdi:cog"></ha-icon></button>
+        <button class="primary small" data-action="new"><ha-icon icon="mdi:plus"></ha-icon><span>${t.new}</span></button>`;
       body = this._listHtml();
+    } else if (this._view === "settings") {
+      left = `<button class="icon" data-action="back" aria-label="${t.back}"><ha-icon icon="mdi:arrow-left"></ha-icon></button>`;
+      title = t.settings;
+      body = this._settingsHtml();
     } else if (this._view === "detail" && this._current) {
       left = `<button class="icon" data-action="back" aria-label="${t.back}"><ha-icon icon="mdi:arrow-left"></ha-icon></button>`;
       title = esc(this._current.title);
@@ -376,11 +575,11 @@ class RecipesPanel extends HTMLElement {
       <div class="toolbar">${left}<div class="title">${title}</div>${right}</div>
       <div class="content">${body}</div>
       ${this._dialog ? this._dialogHtml() : ""}`;
-    if (this._view === "list") {
-      const input = this.shadowRoot.querySelector("#search");
-      if (input && this._searchFocus) {
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
+    if (this._view === "edit") {
+      this.shadowRoot.querySelectorAll('textarea[data-kind="step"]').forEach((el) => this._autoGrow(el));
+      if (this._focus) {
+        this.shadowRoot.querySelector(this._focus)?.focus();
+        this._focus = null;
       }
     }
   }
@@ -424,6 +623,27 @@ class RecipesPanel extends HTMLElement {
   _renderList() {
     const grid = this.shadowRoot.querySelector("#grid");
     if (grid) grid.innerHTML = this._cardsHtml();
+  }
+
+  _settingsHtml() {
+    const t = this._t;
+    const lists = Object.keys(this._hass.states).filter((e) => e.startsWith("todo.")).sort();
+    const own = this._lists?.own || null;
+    const def = this._lists?.def;
+    const option = (entity, label, checked) => `
+      <button class="item list-option" data-action="pick-list" data-entity="${esc(entity || "")}">
+        <ha-icon icon="${checked ? "mdi:radiobox-marked" : "mdi:radiobox-blank"}"></ha-icon>
+        <span>${esc(label)}</span>
+      </button>`;
+    return `
+      <div class="form">
+        <h2>${t.shoppingList}</h2>
+        <div class="help">${t.settingsHelp}</div>
+        <div class="items settings-list">
+          ${option(null, t.useDefault(this._listName(def)), !own)}
+          ${lists.map((e) => option(e, this._listName(e), own === e)).join("")}
+        </div>
+      </div>`;
   }
 
   _detailHtml() {
@@ -476,12 +696,46 @@ class RecipesPanel extends HTMLElement {
         <input id="f-title" data-field="title" value="${esc(d.title)}" autocomplete="off">
         <label for="f-servings">${t.servings}</label>
         <input id="f-servings" data-field="servings" type="number" min="1" max="50" inputmode="numeric" value="${esc(d.servings)}">
-        <label for="f-ingredients">${t.ingredients}</label>
+        <label>${t.ingredients}</label>
         <div class="help">${t.ingredientsHelp}</div>
-        <textarea id="f-ingredients" data-field="ingredients" rows="8" placeholder="250 g pasta&#10;1 ui">${esc(d.ingredients)}</textarea>
-        <label for="f-steps">${t.steps}</label>
-        <div class="help">${t.stepsHelp}</div>
-        <textarea id="f-steps" data-field="steps" rows="8">${esc(d.steps)}</textarea>
+        <datalist id="units">${UNITS.map((u) => `<option value="${u}">`).join("")}</datalist>
+        <div class="ing-head"><span>${t.amount}</span><span>${t.unit}</span><span>${t.ingredient}</span></div>
+        ${d.ingredients
+          .map(
+            (row, i) => `
+          <div class="ing-row">
+            <input data-kind="ing" data-index="${i}" data-part="amount" value="${esc(row.amount)}" inputmode="decimal"
+                   autocomplete="off" aria-label="${t.amount}" enterkeyhint="next">
+            <input data-kind="ing" data-index="${i}" data-part="unit" value="${esc(row.unit)}" list="units"
+                   autocomplete="off" autocapitalize="none" aria-label="${t.unit}" enterkeyhint="next">
+            <input data-kind="ing" data-index="${i}" data-part="name" value="${esc(row.name)}"
+                   autocomplete="off" aria-label="${t.ingredient}" enterkeyhint="next">
+            <button class="icon small" data-action="remove-ingredient" data-index="${i}" aria-label="${t.remove}">
+              <ha-icon icon="mdi:close"></ha-icon></button>
+          </div>`
+          )
+          .join("")}
+        <div class="row"><button class="text" data-action="add-ingredient"><ha-icon icon="mdi:plus"></ha-icon><span>${t.addIngredient}</span></button></div>
+        <label>${t.steps}</label>
+        ${d.steps
+          .map(
+            (step, i) => `
+          <div class="step-row">
+            <span class="num">${i + 1}</span>
+            <textarea data-kind="step" data-index="${i}" rows="2" placeholder="${esc(t.stepPlaceholder(i + 1))}"
+                      enterkeyhint="next">${esc(step)}</textarea>
+            <div class="step-tools">
+              <button class="icon small" data-action="step-up" data-index="${i}" aria-label="${t.moveUp}" ${i === 0 ? "disabled" : ""}>
+                <ha-icon icon="mdi:chevron-up"></ha-icon></button>
+              <button class="icon small" data-action="step-down" data-index="${i}" aria-label="${t.moveDown}" ${i === d.steps.length - 1 ? "disabled" : ""}>
+                <ha-icon icon="mdi:chevron-down"></ha-icon></button>
+              <button class="icon small" data-action="remove-step" data-index="${i}" aria-label="${t.remove}">
+                <ha-icon icon="mdi:close"></ha-icon></button>
+            </div>
+          </div>`
+          )
+          .join("")}
+        <div class="row"><button class="text" data-action="add-step"><ha-icon icon="mdi:plus"></ha-icon><span>${t.addStep}</span></button></div>
         <button class="primary wide" data-action="save"><span>${t.save}</span></button>
       </div>`;
   }
@@ -594,6 +848,20 @@ const STYLE = `
                color: var(--secondary-text-color); --mdc-icon-size: 36px; }
   .photo-box img { width: 100%; height: 100%; object-fit: cover; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ing-head, .ing-row { display: grid; grid-template-columns: 72px 92px 1fr 36px; gap: 6px; align-items: center; }
+  .ing-head { font-size: 12px; color: var(--secondary-text-color); margin-bottom: 4px; padding-left: 2px; }
+  .ing-row { margin-bottom: 6px; }
+  .form .ing-row input { padding: 9px 8px; min-width: 0; }
+  .step-row { display: grid; grid-template-columns: 24px 1fr auto; gap: 6px; align-items: start; margin-bottom: 8px; }
+  .step-row .num { font-weight: 500; color: var(--secondary-text-color); padding-top: 11px; text-align: right; }
+  .form .step-row textarea { resize: none; overflow: hidden; min-height: 44px; }
+  .step-tools { display: flex; flex-direction: column; }
+  .icon.small { width: 34px; height: 34px; --mdc-icon-size: 20px; color: var(--secondary-text-color); }
+  @media (max-width: 480px) {
+    .ing-head, .ing-row { grid-template-columns: 56px 72px 1fr 32px; gap: 4px; }
+    .step-tools { flex-direction: row; grid-column: 2; justify-content: flex-end; margin-top: -4px; }
+    .step-row { grid-template-columns: 20px 1fr; }
+  }
   .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 10; display: flex; align-items: flex-end; justify-content: center; }
   @media (min-width: 600px) { .backdrop { align-items: center; } }
   .dialog { background: var(--card-background-color, var(--primary-background-color)); width: 100%; max-width: 480px; max-height: 90vh;
@@ -606,6 +874,10 @@ const STYLE = `
   .items { overflow-y: auto; border-top: 1px solid var(--divider-color); border-bottom: 1px solid var(--divider-color); }
   .item { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--divider-color); cursor: pointer; }
   .item:last-child { border-bottom: none; }
+  .list-option { width: 100%; background: none; border: none; border-bottom: 1px solid var(--divider-color); text-align: left;
+                 color: var(--primary-text-color); }
+  .list-option ha-icon { color: var(--primary-color); }
+  .settings-list { margin-top: 12px; border-radius: 12px; background: var(--card-background-color); padding: 0 12px; }
   .item input { width: 20px; height: 20px; accent-color: var(--primary-color); flex: none; }
 `;
 

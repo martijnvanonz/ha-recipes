@@ -100,6 +100,10 @@
         "exclude": {
           "name": "Exclude",
           "description": "Skip ingredients that contain one of these words."
+        },
+        "shopping_list": {
+          "name": "Shopping list",
+          "description": "To-do list to use. Default: the list chosen in the integration settings."
         }
       }
     }

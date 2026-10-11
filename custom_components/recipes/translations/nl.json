@@ -100,6 +100,10 @@
         "exclude": {
           "name": "Behalve",
           "description": "Sla ingrediënten met een van deze woorden over."
+        },
+        "shopping_list": {
+          "name": "Boodschappenlijst",
+          "description": "Takenlijst om te gebruiken. Standaard: de lijst uit de instellingen van de integratie."
         }
       }
     }

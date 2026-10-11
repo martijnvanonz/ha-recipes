@@ -67,3 +67,7 @@ add_to_shopping_list:
       selector:
         text:
           multiple: true
+    shopping_list:
+      selector:
+        entity:
+          domain: todo
