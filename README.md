@@ -36,6 +36,8 @@
 
 ## Install
 
+[![Open your Home Assistant instance and open this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=martijnvanonz&repository=ha-recipes&category=integration)
+
 **With HACS (recommended)**
 
 1. In Home Assistant open **HACS → ⋮ → Custom repositories**.
