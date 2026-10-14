@@ -11,7 +11,23 @@
   <img src="https://img.shields.io/github/actions/workflow/status/martijnvanonz/ha-recipes/tests.yml?label=tests" alt="Tests">
 </p>
 
+<p align="center">
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=martijnvanonz&repository=ha-recipes&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open in HACS"></a>
+</p>
+
 ![Recipes overview](docs/screenshots/overview.jpg)
+
+## Why Recipes?
+
+- **No extra server.** It runs inside Home Assistant. No separate container, database or app to keep up to date, and your recipes are in your normal Home Assistant backups.
+- **Made for your shopping list.** Pick the number of people, untick what you already have, and the rest goes to your Home Assistant to-do list. Every person can use their own list.
+- **Made for automations and AI.** Every action is a service, and the planned recipe is a sensor. Show the steps when you walk into the kitchen, or tell your AI assistant *"put tacos for four on the list"*.
+
+![Demo: from recipe to shopping list](docs/demo.gif)
+
+### Recipes or Mealie?
+
+[Mealie](https://mealie.io) and [Tandoor](https://tandoor.dev) are full recipe apps with web import, meal plans and nutrition data. Use them if you want all of that. Use **Recipes** if you want a simple recipe book inside Home Assistant that works with your shopping list, your dashboards and your automations, without running another service.
 
 ## Features
 

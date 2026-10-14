@@ -1,0 +1,16 @@
+name: Idea or feature request
+description: Suggest something that would make Recipes better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Describe the idea and the situation where you would use it.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is it useful?
+      description: What can you not do now, or what takes too much work?
